@@ -56,16 +56,17 @@ def write_dbf(count_file, city_dic, header):
         csvr = csv.DictReader(routes, header)
         next(csvr)
         for rec in csvr:
+            formatted_crrt = "{0}{1}".format((rec['crrt'][0]).upper(), str(rec['crrt'][1:]).zfill(3))
             repeats = int(rec['cnt'])
-            db_counts.append((rec['zip'], rec['crrt'], str(rec['cnt']).zfill(5), str(rec['pos']).zfill(5)),)
+            db_counts.append((rec['zip'], formatted_crrt, str(rec['cnt']).zfill(5), str(rec['pos']).zfill(5)),)
 
             for n in range(0, repeats):
-                # print(rec['zip'], rec['crrt'], n, repeats)
+                # print(rec['zip'], formatted_crrt, n, repeats)
                 db.append(('RESIDENTIAL CUSTOMER', '',
                            city_dic[rec['zip']]['City'],
                            city_dic[rec['zip']]['State'],
                            city_dic[rec['zip']]['Zip5'],
-                           rec['crrt'], '0000001', 'N',
+                           formatted_crrt, '0000001', 'N',
                            '/{zip}{ckd}/'.format(zip=city_dic[rec['zip']]['Zip5'],
                                                  ckd=zip_ckd(city_dic[rec['zip']]['Zip5'])),
                            ''),)
