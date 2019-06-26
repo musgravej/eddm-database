@@ -7,6 +7,21 @@ import os
 import math
 
 
+class GlobalVar():
+    def __init__(self):
+        self.mail_residential = False
+
+    def set_mailing_residential(self, val):
+        self.mail_residential = bool(val)
+
+    def record_addressee(self, route):
+        if route[0] == 'B':
+            return 'PO BOX HOLDER'
+        elif self.mail_residential == True:
+            return 'RESIDENTIAL CUSTOMER'
+        return 'POSTAL CUSTOMER'
+
+
 def usps_zip_lookup(zipcode):
     url = 'https://secure.shippingapis.com/ShippingAPI.dll?API=CityStateLookup&XML={0}'
     usps_userid = '813BINDE5230'
@@ -57,12 +72,14 @@ def write_dbf(count_file, city_dic, header):
         next(csvr)
         for rec in csvr:
             formatted_crrt = "{0}{1}".format((rec['crrt'][0]).upper(), str(rec['crrt'][1:]).zfill(3))
+            addressee = gblv.record_addressee(formatted_crrt)
             repeats = int(rec['cnt'])
             db_counts.append((rec['zip'], formatted_crrt, str(rec['cnt']).zfill(5), str(rec['pos']).zfill(5)),)
 
             for n in range(0, repeats):
                 # print(rec['zip'], formatted_crrt, n, repeats)
-                db.append(('RESIDENTIAL CUSTOMER', '',
+
+                db.append((addressee, '',
                            city_dic[rec['zip']]['City'],
                            city_dic[rec['zip']]['State'],
                            city_dic[rec['zip']]['Zip5'],
@@ -149,6 +166,10 @@ def csv_from_counts_file(fle):
 
 
 if __name__ == '__main__':
+    # TODO Script to pick residential or simplified all routes
+    global gblv
+    gblv = GlobalVar()
+    gblv.set_mailing_residential(False)
     # csv_from_counts_file('SIMPLIFIED ADR 50309,50312 CRRT Counts')
     # read_dbf('SIMPLIFIED ADR 50309,50312 CRRT Counts')
 

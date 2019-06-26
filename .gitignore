@@ -2,7 +2,8 @@
 *.dbf
 *.csv
 *.txt
-
+/fb-eddm
+.idea/
 
 __pycache__/
 *.py[cod]
