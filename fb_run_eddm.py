@@ -19,6 +19,10 @@ class GlobalVar():
         self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm'))
         self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
         self.create_accuzip_dir()
+        self.touches = 0
+        self.dat_header = ["AgentID", "DateSelected", "City", "State",
+                           "ZipCode", "RouteID", "Quantity", "POS",
+                           "NumberOfTouches"]
 
     def create_accuzip_dir(self):
         if not os.path.exists(self.accuzip_path):
@@ -35,15 +39,9 @@ class GlobalVar():
         return 'POSTAL CUSTOMER'
 
 
-def process_dat(fle_path, fle):
+def create_database(fle_path, fle, touch=''):
 
-    dat_header = ["AgentID", "DateSelected", "City", "State",
-                  "ZipCode", "RouteID", "Quantity", "POS",
-                  "NumberOfTouches"]
-
-    newdb = os.path.join(fle_path, fle[:-4])
-    shutil.copy2(os.path.join(gblv.downloaded_orders_path, fle),
-                 os.path.join(fle_path, fle))
+    newdb = os.path.join(fle_path, "{0}{1}".format(fle[:-4], touch))
 
     db = dbf.Table("{0}".format(newdb), ('FIRST C(25); ADDRESS C(1); CITY C(28); '
                                          'ST C(2); ZIP C(10); CRRT C(4); '
@@ -56,8 +54,8 @@ def process_dat(fle_path, fle):
     db.open(mode=dbf.READ_WRITE)
     db_counts.open(mode=dbf.READ_WRITE)
 
-    with open(os.path.join(fle_path,fle), 'r') as routes:
-        csvr = csv.DictReader(routes, dat_header, delimiter='\t')
+    with open(os.path.join(fle_path, fle), 'r') as routes:
+        csvr = csv.DictReader(routes, gblv.dat_header, delimiter='\t')
         next(csvr)
         for rec in csvr:
             addressee = gblv.record_addressee(rec['RouteID'])
@@ -78,8 +76,32 @@ def process_dat(fle_path, fle):
     db.close()
     db_counts.close()
 
-    shutil.copy(os.path.join(fle_path, "{0}.dbf".format(fle[:-4])),
-                 os.path.join(gblv.accuzip_path, "{0}.dbf".format(fle[:-4])))
+    # Move copies to AccuZip folder
+    shutil.copy(os.path.join(fle_path, "{0}{1}.dbf".format(fle[:-4], touch)),
+                 os.path.join(gblv.accuzip_path, "{0}{1}.dbf".format(fle[:-4], touch)))
+
+
+def process_dat(fle_path, fle):
+
+    shutil.copy2(os.path.join(gblv.downloaded_orders_path, fle),
+                 os.path.join(fle_path, fle))
+
+    # get number of touches
+    with open(os.path.join(fle_path, fle), 'r') as routes:
+        csvr = csv.DictReader(routes, gblv.dat_header, delimiter='\t')
+        next(csvr)
+        for rec in csvr:
+            gblv.touches = int(rec['NumberOfTouches'])
+            break
+
+    # If one touch, make one file
+    if gblv.touches == 1:
+        create_database(fle_path, fle)
+
+    # If two touches, make two files
+    if gblv.touches == 2:
+        for i in ['_1', '_2']:
+            create_database(fle_path, fle, i)
 
 
 def read_dbf(fle):

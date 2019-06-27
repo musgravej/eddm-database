@@ -5,6 +5,7 @@
 /fb-eddm
 .idea/
 bak/
+notes.txt
 
 __pycache__/
 *.py[cod]
