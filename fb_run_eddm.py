@@ -7,6 +7,8 @@ import os
 import math
 import datetime
 import shutil
+import datetime
+import configparser
 
 """
 This script will process FB EDDM lists downloaded from eddm order portal
@@ -20,6 +22,9 @@ class GlobalVar():
         self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
         self.create_accuzip_dir()
         self.touches = 0
+        self.touch_1_maildate = datetime.date.today()
+        self.touch_2_maildate = datetime.date.today()
+
         self.dat_header = ["AgentID", "DateSelected", "City", "State",
                            "ZipCode", "RouteID", "Quantity", "POS",
                            "NumberOfTouches"]
@@ -37,6 +42,27 @@ class GlobalVar():
         elif self.mail_residential:
             return 'RESIDENTIAL CUSTOMER'
         return 'POSTAL CUSTOMER'
+
+    def set_touch_2_maildate(self):
+        proc_dt = self.touch_1_maildate + datetime.timedelta(days=45)
+        day_of_week = proc_dt.isoweekday()
+
+        while day_of_week > 5:
+            proc_dt = proc_dt + datetime.timedelta(days=1)
+            day_of_week = proc_dt.isoweekday()
+
+        self.touch_2_maildate = proc_dt
+
+    def set_touch_1_maildate(self, file_date):
+        proc_dt = datetime.datetime.strptime(file_date, "%Y%m%d%H%M%S")
+        proc_dt = proc_dt + datetime.timedelta(days=5)
+        day_of_week = proc_dt.isoweekday()
+
+        while day_of_week > 5:
+            proc_dt = proc_dt + datetime.timedelta(days=1)
+            day_of_week = proc_dt.isoweekday()
+
+        self.touch_1_maildate = proc_dt
 
 
 def create_database(fle_path, fle, touch=''):
@@ -96,12 +122,15 @@ def process_dat(fle_path, fle):
 
     # If one touch, make one file
     if gblv.touches == 1:
+        # print(fle)
         create_database(fle_path, fle)
+        write_ini("{0}".format(fle[:-4]))
 
     # If two touches, make two files
     if gblv.touches == 2:
-        for i in ['_1', '_2']:
-            create_database(fle_path, fle, i)
+        for i, t in enumerate(['_1', '_2'], 1):
+            create_database(fle_path, fle, t)
+            write_ini("{0}".format(fle[:-4]), i)
 
 
 def read_dbf(fle):
@@ -130,6 +159,35 @@ def sum_digits(n):
     return r
 
 
+def write_ini(fle, touch=False):
+    gblv.set_touch_1_maildate(fle[-14:])
+    gblv.set_touch_2_maildate()
+
+    configfile = os.path.join(gblv.accuzip_path, 'mail_dates.ini')
+
+    if not os.path.exists(configfile):
+        config = configparser.ConfigParser()
+        config.add_section('mailing_dates')
+        with open(configfile, 'w') as c:
+            config.write(c)
+
+    config = configparser.ConfigParser()
+    config.read(configfile)
+    if touch:
+        if touch == 1:
+            config.set('mailing_dates', "{0}_{1}".format(fle, touch),
+                       datetime.datetime.strftime(gblv.touch_1_maildate, "%m/%d/%Y"))
+        if touch == 2:
+            config.set('mailing_dates', "{0}_{1}".format(fle, touch),
+                       datetime.datetime.strftime(gblv.touch_2_maildate, "%m/%d/%Y"))
+    else:
+        config.set('mailing_dates', fle, datetime.datetime.strftime(gblv.touch_1_maildate, "%m/%d/%Y"))
+
+    with open(configfile, 'w') as c:
+        config.write(c)
+
+
+
 def process_order(file):
     process_path = os.path.join(gblv.downloaded_orders_path, file[:-4])
     if os.path.exists(process_path):
@@ -137,7 +195,6 @@ def process_order(file):
         os.mkdir(process_path)
     else:
         os.mkdir(process_path)
-
 
     process_dat(process_path, file)
 
