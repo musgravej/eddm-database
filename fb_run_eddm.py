@@ -9,60 +9,13 @@ import datetime
 import shutil
 import datetime
 import configparser
+import settings
+import get_order_by_date
 
 """
 This script will process FB EDDM lists downloaded from eddm order portal
 """
 # TODO Add function that will open the production pdf and check the touch counts
-
-class GlobalVar():
-    def __init__(self):
-        self.mail_residential = False
-        self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm'))
-        self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
-        self.create_accuzip_dir()
-        self.touches = 0
-        self.touch_1_maildate = datetime.date.today()
-        self.touch_2_maildate = datetime.date.today()
-
-        self.dat_header = ["AgentID", "DateSelected", "City", "State",
-                           "ZipCode", "RouteID", "Quantity", "POS",
-                           "NumberOfTouches"]
-
-    def create_accuzip_dir(self):
-        if not os.path.exists(self.accuzip_path):
-            os.mkdir(self.accuzip_path)
-
-    def set_mailing_residential(self, val):
-        self.mail_residential = bool(val)
-
-    def record_addressee(self, route):
-        if route[0] == 'B':
-            return 'PO BOX HOLDER'
-        elif self.mail_residential:
-            return 'RESIDENTIAL CUSTOMER'
-        return 'POSTAL CUSTOMER'
-
-    def set_touch_2_maildate(self):
-        proc_dt = self.touch_1_maildate + datetime.timedelta(days=45)
-        day_of_week = proc_dt.isoweekday()
-
-        while day_of_week > 5:
-            proc_dt = proc_dt + datetime.timedelta(days=1)
-            day_of_week = proc_dt.isoweekday()
-
-        self.touch_2_maildate = proc_dt
-
-    def set_touch_1_maildate(self, file_date):
-        proc_dt = datetime.datetime.strptime(file_date, "%Y%m%d%H%M%S")
-        proc_dt = proc_dt + datetime.timedelta(days=5)
-        day_of_week = proc_dt.isoweekday()
-
-        while day_of_week > 5:
-            proc_dt = proc_dt + datetime.timedelta(days=1)
-            day_of_week = proc_dt.isoweekday()
-
-        self.touch_1_maildate = proc_dt
 
 
 def create_database(fle_path, fle, touch=''):
@@ -187,6 +140,30 @@ def write_ini(fle, touch=False):
         config.write(c)
 
 
+def download_web_orders():
+
+    if gblv.environment == 'QA':
+        token = gblv.fb_qa_token
+    else:
+        token = gblv.fb_token
+
+    year = 2019
+
+    month_start = 6
+    day_start = 19
+
+    month_end = 7
+    day_end = 2
+
+    date_start = (datetime.datetime.strptime("{y}-{m}-{d} 00:00:00".format(
+                  m=month_start,y=year,d=str(day_start).zfill(2)),"%Y-%m-%d %H:%M:%S"))
+
+    date_end = (datetime.datetime.strptime("{y}-{m}-{d} 23:59:59".format(
+                  m=month_end,y=year,d=str(day_end).zfill(2)),"%Y-%m-%d %H:%M:%S"))
+
+    get_order_by_date.order_request_by_date(date_start, date_end, gblv, token)
+    get_order_by_date.clean_unused_orders(gblv, token)
+
 
 def process_order(file):
     process_path = os.path.join(gblv.downloaded_orders_path, file[:-4])
@@ -201,8 +178,15 @@ def process_order(file):
 
 if __name__ == '__main__':
     global gblv
-    gblv = GlobalVar()
+    gblv = settings.GlobalVar()
     gblv.set_mailing_residential(True)
+
+    # if not os.path.exists(gblv.db_name):
+    #     get_order_by_date.intialize_databases(gblv)
+
+    get_order_by_date.intialize_databases(gblv)
+    download_web_orders()
+    exit()
 
     orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
     for order in orders:

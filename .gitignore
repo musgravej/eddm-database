@@ -6,6 +6,8 @@
 .idea/
 bak/
 notes.txt
+config.ini
+*.db
 
 __pycache__/
 *.py[cod]
