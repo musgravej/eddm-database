@@ -5,9 +5,9 @@
 /fb-eddm
 .idea/
 bak/
-notes.txt
 config.ini
 *.db
+*.xlsx
 
 __pycache__/
 *.py[cod]
