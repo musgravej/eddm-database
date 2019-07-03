@@ -8,6 +8,8 @@ bak/
 config.ini
 *.db
 *.xlsx
+*.sublime-project
+*.sublime-workspace
 
 __pycache__/
 *.py[cod]
