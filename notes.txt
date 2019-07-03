@@ -1,0 +1,51 @@
+What will the EDDM pdf file be named?
+Should Accuzip set the mailing date from a calculated date?
+Should second drops be a strict 45 day calculation?
+AccuZip read ini file?
+
+Download FB data from API
+FB order will not match .dat file name
+create slip sheet with drop dates for each order
+match agent id and timestamp and qty?
+Current users in:
+I:\Customer Files\In Progress\01-Web Storefront DBs\FB Marketing Toolkit\Current
+
+
+select finishing_options,
+       json_extract(finishing_options, '$.FinishingOption[0].Value') 'drops'
+from OrderDetail
+where json_extract(finishing_options, '$.FinishingOption[0].Name') = 'Drops'
+;
+
+-- Look at OrderDetail.pagecount field?
+
+select create_date
+       , date(create_date) 'date'
+       , abs(cast(
+              (julianday(create_date) - julianday('now')) * 24 * 60
+              as INTEGER
+              )) 'date diff'
+from OrderRequestByDate
+;
+
+select strftime('%Y-%m-%d %H:%M:%S','now') as 'UTC'
+       ,strftime('%Y-%m-%d %H:%M:%S', DATETIME('now', '-8 hour')) as 'PST'
+       ,DATETIME('now', 'localtime') as 'Local Datetime'
+       ,DATETIME('now', 'localtime', '-3 hour') as 'PST Datetime'
+;
+
+Marcom order datetime stamp is PST
+V2FBLUSERDATA if Cancel-Date 0 or Empty they are active
+if difference in drop, use API download information
+Look for matches in the FB-EDDM folder data files
+    match by qty, datetime (within 10 min), user_id
+    manual review folder
+    if matches, continue with processing
+    assign the file a new name with OrderRequestByDate.order_number-OrderDetail.order_detail_id
+
+Order data is downloaded as [user_id]_[datetime]
+V2FBLUSERDATA contains the agent_id (FB field)
+If an order.user_id not in v2fbluserdata.agent_id flag the file and move to a standby folder
+
+New portal id will be 19404
+New product id will be 3029

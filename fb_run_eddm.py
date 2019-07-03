@@ -11,11 +11,14 @@ import datetime
 import configparser
 import settings
 import get_order_by_date
+import sqlite3
 
 """
 This script will process FB EDDM lists downloaded from eddm order portal
 """
 # TODO Add function that will open the production pdf and check the touch counts
+# TODO Add V2FBLUSERDATA to SQLite database
+# TODO come up with time / file / order comparision
 
 
 def create_database(fle_path, fle, touch=''):
@@ -34,10 +37,10 @@ def create_database(fle_path, fle, touch=''):
     db_counts.open(mode=dbf.READ_WRITE)
 
     with open(os.path.join(fle_path, fle), 'r') as routes:
-        csvr = csv.DictReader(routes, gblv.dat_header, delimiter='\t')
+        csvr = csv.DictReader(routes, eddm_order.dat_header, delimiter='\t')
         next(csvr)
         for rec in csvr:
-            addressee = gblv.record_addressee(rec['RouteID'])
+            addressee = eddm_order.record_addressee(rec['RouteID'])
             repeats = int(rec['Quantity'])
             db_counts.append((rec['ZipCode'], rec['RouteID'],
                               str(rec['Quantity']).zfill(5),
@@ -62,25 +65,28 @@ def create_database(fle_path, fle, touch=''):
 
 def process_dat(fle_path, fle):
 
+    eddm_order = settings.EDDMOrder()
+    eddm_order.set_mailing_residential(True)
+
     shutil.copy2(os.path.join(gblv.downloaded_orders_path, fle),
                  os.path.join(fle_path, fle))
 
     # get number of touches
     with open(os.path.join(fle_path, fle), 'r') as routes:
-        csvr = csv.DictReader(routes, gblv.dat_header, delimiter='\t')
+        csvr = csv.DictReader(routes, eddm_order.dat_header, delimiter='\t')
         next(csvr)
         for rec in csvr:
-            gblv.touches = int(rec['NumberOfTouches'])
+            eddm_order.touches = int(rec['NumberOfTouches'])
             break
 
     # If one touch, make one file
-    if gblv.touches == 1:
+    if eddm_order.touches == 1:
         # print(fle)
         create_database(fle_path, fle)
         write_ini("{0}".format(fle[:-4]))
 
     # If two touches, make two files
-    if gblv.touches == 2:
+    if eddm_order.touches == 2:
         for i, t in enumerate(['_1', '_2'], 1):
             create_database(fle_path, fle, t)
             write_ini("{0}".format(fle[:-4]), i)
@@ -113,8 +119,8 @@ def sum_digits(n):
 
 
 def write_ini(fle, touch=False):
-    gblv.set_touch_1_maildate(fle[-14:])
-    gblv.set_touch_2_maildate()
+    eddm_order.set_touch_1_maildate(fle[-14:])
+    eddm_order.set_touch_2_maildate()
 
     configfile = os.path.join(gblv.accuzip_path, 'mail_dates.ini')
 
@@ -140,12 +146,41 @@ def write_ini(fle, touch=False):
         config.write(c)
 
 
-def download_web_orders():
+def import_userdata(gblv):
+    """
+    Imports V2FBLUSERDATA.txt file from path, used to determine if user is still active
+    """
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
 
-    if gblv.environment == 'QA':
-        token = gblv.fb_qa_token
-    else:
-        token = gblv.fb_token
+    sql = "DROP TABLE IF EXISTS `v2fbluserdata`;"
+    cursor.execute(sql)
+
+    sql = ("CREATE TABLE `v2fbluserdata` ("
+           "`agent_id` VARCHAR(10) NOT NULL,"
+           "`nickname` VARCHAR(60) DEFAULT NULL,"
+           "`fname` VARCHAR(60) DEFAULT NULL,"
+           "`lname` VARCHAR(60) DEFAULT NULL,"
+           "`cancel_date` DATETIME NULL DEFAULT NULL,"
+           "PRIMARY KEY (`agent_id`));")
+    cursor.execute(sql)
+
+    with open(gblv.user_data_path, 'r') as users:
+        for n, line in enumerate(users):
+            agentid = line[2:7]
+            nickname = line[33:93].strip()
+            fname = line[93:153].strip()
+            lname = line[213:283].strip()
+            cancel_date = (datetime.datetime.strptime(line[386:394], '%Y%m%d')
+                           if not line[386:394] == '00000000' else None)
+
+            sql = ("INSERT INTO `v2fbluserdata` VALUES (?,?,?,?,?);")
+            cursor.execute(sql, (agentid, nickname, fname, lname, cancel_date,))
+
+    conn.commit()
+
+
+def download_web_orders(gblv):
 
     year = 2019
 
@@ -161,8 +196,8 @@ def download_web_orders():
     date_end = (datetime.datetime.strptime("{y}-{m}-{d} 23:59:59".format(
                   m=month_end,y=year,d=str(day_end).zfill(2)),"%Y-%m-%d %H:%M:%S"))
 
-    get_order_by_date.order_request_by_date(date_start, date_end, gblv, token)
-    get_order_by_date.clean_unused_orders(gblv, token)
+    get_order_by_date.order_request_by_date(date_start, date_end, gblv, gblv.token)
+    get_order_by_date.clean_unused_orders(gblv, gblv.token)
 
 
 def process_order(file):
@@ -179,13 +214,16 @@ def process_order(file):
 if __name__ == '__main__':
     global gblv
     gblv = settings.GlobalVar()
-    gblv.set_mailing_residential(True)
+    gblv.set_environment('QA')
+    gblv.set_token_name()
+    gblv.set_db_name()
 
-    # if not os.path.exists(gblv.db_name):
-    #     get_order_by_date.intialize_databases(gblv)
+    if not os.path.exists(os.path.join(os.curdir, gblv.db_name)):
+        get_order_by_date.intialize_databases(gblv)
 
     get_order_by_date.intialize_databases(gblv)
-    download_web_orders()
+    import_userdata(gblv)
+    download_web_orders(gblv)
     exit()
 
     orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']

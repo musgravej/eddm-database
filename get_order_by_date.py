@@ -270,13 +270,8 @@ class Record(dict):
 
 
 def intialize_databases(gblv):
-    
-    if gblv.environment == 'QA':
-        token = gblv.fb_qa_token
-    else:
-        token = gblv.fb_token
 
-    conn = sqlite3.connect(gblv.db_name[token])
+    conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
 
     sql = "DROP TABLE IF EXISTS `OrderRequestByDate`;"
@@ -419,7 +414,7 @@ def order_request_by_date(date_start, date_end, gbl, token, database=''):
     request_datetime = datetime.datetime.strftime(datetime.datetime.now(), "%Y-%m-%d %H:%M:%S")
 
     # Make a sql connection
-    conn = sqlite3.connect(gbl.db_name[token])
+    conn = sqlite3.connect(gbl.db_name)
     cursor = conn.cursor()
 
     # get a set of all the order_id's we run before, so we can skip if already done
@@ -449,7 +444,7 @@ def order_request_by_date(date_start, date_end, gbl, token, database=''):
     try:
         for n, elem in enumerate(response.GetOrdersResponse.Orders.Order):
             rec = Record()
-            rec.init_values(elem, gbl.token_names[token], request_datetime)
+            rec.init_values(elem, gbl.token_names[gbl.token], request_datetime)
 
             user = User()
             user.init_values(elem)
@@ -490,7 +485,7 @@ def order_request_by_date(date_start, date_end, gbl, token, database=''):
 
             # """Insert MySQL update functions here"""
             if rec['order_id'] not in history:
-                print("Updating {0} order id: {1}".format(gbl.token_names[token], rec['order_id']))
+                print("Updating {0} order id: {1}".format(gbl.token_names[gbl.token], rec['order_id']))
 
                 replace_into_table(rec, 'OrderRequestByDate', conn)
                 # replace_into_table(company, 'Company', conn)
@@ -533,7 +528,7 @@ def clean_unused_orders(gbl, token):
     """
     # Make a sql connection
     print("Cleaning up database")
-    conn = sqlite3.connect(gbl.db_name[token])
+    conn = sqlite3.connect(gbl.db_name)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM OrderDetail WHERE product_id != '853';")
     conn.commit()

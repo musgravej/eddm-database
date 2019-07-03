@@ -9,14 +9,11 @@ Home to the GlobalVar class, and other classes and functions that
 need to be accessible through the whole application 
 """
 
+
 class GlobalVar:
     def __init__(self):
         config = configparser.ConfigParser()
         config.read(os.path.join(os.curdir, 'config.ini'))
-
-        # VERY IMPORTANT
-        self.environment = 'QA'
-        # self.environment = 'PRODUCTION'
 
         self.order_db = os.path.join(os.curdir, 'orders.db')
 
@@ -35,20 +32,49 @@ class GlobalVar:
         self.jobticket_url = config['jobticket']['production']
         self.jobticket_url_wsdl = config['jobticket']['production_wsdl']
 
-        self.token_names = {
-                            self.fb_token: 'Farm Bureau',
+        # VERY IMPORTANT
+        self.environment = ''
+        self.token = ''
+        self.db_name = ''
+
+        self.token_names = {self.fb_token: 'Farm Bureau',
                             self.fb_qa_token: 'Farm Bureau QA',
                             }
 
-        self.db_name = {self.fb_token: 'eddm_db.db',
-                        self.fb_qa_token: 'eddm_db_qa.db'
-                        }
+        self.db_names = {self.fb_token: 'eddm_db.db',
+                         self.fb_qa_token: 'eddm_db_qa.db'
+                         }
 
-        # Settings from the orginal GlobalVar() 
-        self.mail_residential = False
+        self.user_data_path = (os.path.join('\\\\JTSRV4', 'Data', 'Customer Files', 'In Progress',
+                                            '01-Web Storefront DBs', 'FB Marketing Toolkit', 'Current',
+                                            'V2FBLUSERDATA.TXT'))
+
         # P:\FTPfiles\LocalUser\FB - EDDM
         self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm'))
         self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
+
+    def create_accuzip_dir(self):
+        if not os.path.exists(self.accuzip_path):
+            os.mkdir(self.accuzip_path)
+
+    def set_environment(self, env):
+        # set to 'Production' for production, anything else, not production
+        self.environment = env
+
+    def set_token_name(self):
+        if self.environment.upper() == 'PRODUCTION':
+            self.token = self.fb_token
+        else:
+            self.token = self.fb_qa_token
+
+    def set_db_name(self):
+        self.db_name = self.db_names[self.token]
+
+
+class EDDMOrder:
+    def __init__(self):
+        # Settings from the orginal GlobalVar()
+        self.mail_residential = False
         self.create_accuzip_dir()
         self.touches = 0
         self.touch_1_maildate = datetime.date.today()
@@ -57,10 +83,6 @@ class GlobalVar:
         self.dat_header = ["AgentID", "DateSelected", "City", "State",
                            "ZipCode", "RouteID", "Quantity", "POS",
                            "NumberOfTouches"]
-
-    def create_accuzip_dir(self):
-        if not os.path.exists(self.accuzip_path):
-            os.mkdir(self.accuzip_path)
 
     def set_mailing_residential(self, val):
         self.mail_residential = bool(val)
@@ -92,6 +114,7 @@ class GlobalVar:
             day_of_week = proc_dt.isoweekday()
 
         self.touch_1_maildate = proc_dt
+
 
 def clean_json(json_string):
     """
