@@ -3,6 +3,7 @@ import re
 import json
 import os
 import datetime
+import shutil
 
 """
 Home to the GlobalVar class, and other classes and functions that 
@@ -53,6 +54,8 @@ class GlobalVar:
         self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm'))
         self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
 
+        self.create_accuzip_dir()
+
     def create_accuzip_dir(self):
         if not os.path.exists(self.accuzip_path):
             os.mkdir(self.accuzip_path)
@@ -75,8 +78,8 @@ class EDDMOrder:
     def __init__(self):
         # Settings from the orginal GlobalVar()
         self.mail_residential = False
-        self.create_accuzip_dir()
-        self.touches = 0
+        self.file_touches = 0
+        self.file_qty = 0
         self.touch_1_maildate = datetime.date.today()
         self.touch_2_maildate = datetime.date.today()
 

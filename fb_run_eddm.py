@@ -71,22 +71,30 @@ def process_dat(fle_path, fle):
     shutil.copy2(os.path.join(gblv.downloaded_orders_path, fle),
                  os.path.join(fle_path, fle))
 
-    # get number of touches
+    # get number of touches in the file
     with open(os.path.join(fle_path, fle), 'r') as routes:
         csvr = csv.DictReader(routes, eddm_order.dat_header, delimiter='\t')
         next(csvr)
+        running_cnt = 0
         for rec in csvr:
-            eddm_order.touches = int(rec['NumberOfTouches'])
-            break
+            eddm_order.file_touches = int(rec['NumberOfTouches'])
+            running_cnt += int(rec['Quantity'])
+
+        eddm_order.file_qty = running_cnt
+
+    get_order_by_date.update_processing_file_table(fle, eddm_order, gblv)
+
+    # TODO Take up where you left off here
+    return
 
     # If one touch, make one file
-    if eddm_order.touches == 1:
+    if eddm_order.file_touches == 1:
         # print(fle)
         create_database(fle_path, fle)
         write_ini("{0}".format(fle[:-4]))
 
     # If two touches, make two files
-    if eddm_order.touches == 2:
+    if eddm_order.file_touches == 2:
         for i, t in enumerate(['_1', '_2'], 1):
             create_database(fle_path, fle, t)
             write_ini("{0}".format(fle[:-4]), i)
@@ -200,14 +208,17 @@ def download_web_orders(gblv):
     get_order_by_date.clean_unused_orders(gblv, gblv.token)
 
 
-def process_order(file):
-    process_path = os.path.join(gblv.downloaded_orders_path, file[:-4])
+def create_process_order_path(process_path):
+    # Creates this folder structure for the file
     if os.path.exists(process_path):
         shutil.rmtree(process_path)
         os.mkdir(process_path)
     else:
         os.mkdir(process_path)
 
+def process_order(file):
+    process_path = os.path.join(gblv.downloaded_orders_path, file[:-4])
+    create_process_order_path(process_path)
     process_dat(process_path, file)
 
 
@@ -218,13 +229,14 @@ if __name__ == '__main__':
     gblv.set_token_name()
     gblv.set_db_name()
 
-    if not os.path.exists(os.path.join(os.curdir, gblv.db_name)):
-        get_order_by_date.intialize_databases(gblv)
+    # if not os.path.exists(os.path.join(os.curdir, gblv.db_name)):
+    #     get_order_by_date.intialize_databases(gblv)
 
-    get_order_by_date.intialize_databases(gblv)
-    import_userdata(gblv)
-    download_web_orders(gblv)
-    exit()
+    get_order_by_date.initialise_databases(gblv)
+    get_order_by_date.processing_files_table(gblv)
+    # import_userdata(gblv)
+    # download_web_orders(gblv)
+    # exit()
 
     orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
     for order in orders:

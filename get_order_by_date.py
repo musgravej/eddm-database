@@ -1,3 +1,5 @@
+import os
+import pytz
 import zeep
 import datetime
 import bs4
@@ -269,16 +271,60 @@ class Record(dict):
         self['fetch_date'] = fetch_date
 
 
-def intialize_databases(gblv):
+def processing_files_table(gblv):
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+
+    orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
+
+    for order in orders:
+        sql = ("INSERT INTO `ProcessingFiles` (filename, order_datetime_utc, order_datetime_pst,"
+               "user_id) VALUES (?,?,?,?);")
+
+        parse_filename = str.split(order, '_')
+
+        userid = parse_filename[0]
+        order_datetime_utc = datetime.datetime.strptime(parse_filename[1][:-4], "%Y%m%d%H%M%S")
+        order_datetime_pst = order_datetime_utc.replace(tzinfo=pytz.timezone('US/Pacific'))
+
+        print(order, order_datetime_utc.strftime("%Y-%m-%d %H:%M:%S %Z%z"),
+              order_datetime_pst.strftime("%Y-%m-%d %H:%M:%S %Z%z"))
+
+        cursor.execute(sql, (order, order_datetime_utc, order_datetime_pst, userid))
+
+    conn.commit()
+    conn.close()
+
+
+def update_processing_file_table(fle, eddm_order, gblv):
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+
+    sql1 = "UPDATE `ProcessingFiles` SET order_records = ? WHERE filename = ?;"
+    sql2 = "UPDATE `ProcessingFiles` SET order_file_touches = ? WHERE filename = ?;"
+
+    cursor.execute(sql1, (eddm_order.file_qty, fle,))
+    cursor.execute(sql2, (eddm_order.file_touches, fle,))
+
+    conn.commit()
+    conn.close()
+
+
+def initialise_databases(gblv):
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
 
+    # comment out for production environment
     sql = "DROP TABLE IF EXISTS `OrderRequestByDate`;"
     cursor.execute(sql)
     sql = "DROP TABLE IF EXISTS `RequestHistory`;"
     cursor.execute(sql)
     sql = "DROP TABLE IF EXISTS `OrderDetail`;"
+    cursor.execute(sql)
+    sql = "DROP TABLE IF EXISTS `ProcessingFiles`;"
+    cursor.execute(sql)
+    sql = "DROP TABLE IF EXISTS `FileHistory`;"
     cursor.execute(sql)
 
     conn.commit()
@@ -313,95 +359,117 @@ def intialize_databases(gblv):
            "PRIMARY KEY (`order_id`));")
     cursor.execute(sql)
 
+    # table of currently processing files
+    sql = ("CREATE TABLE `ProcessingFiles` ("
+           "`filename` VARCHAR(100) NOT NULL,"
+           "`order_datetime_utc` DATETIME NULL DEFAULT NULL,"
+           "`order_datetime_pst` DATETIME NULL DEFAULT NULL,"
+           "`order_records` INT(8) NULL DEFAULT NULL,"
+           "`order_file_touches` INT(1) NULL DEFAULT NULL,"
+           "`user_id` VARCHAR(50) NULL DEFAULT NULL,"
+           "PRIMARY KEY (`filename`));")
+    cursor.execute(sql)
+
+    # table of historical file data
+    sql = ("CREATE TABLE `FileHistory` ("
+           "`filename` VARCHAR(100) NOT NULL,"
+           "`jobname` VARCHAR(100) NOT NULL,"
+           "`processing_date` DATETIME NULL DEFAULT NULL,"
+           "`order_records` INT(8) NULL DEFAULT NULL,"
+           "`order_touches` INT(1) NULL DEFAULT NULL,"
+           "`user_id` VARCHAR(50) NULL DEFAULT NULL,"
+           "PRIMARY KEY (`filename`));")
+    cursor.execute(sql)
+
     sql = ("CREATE TABLE `OrderDetail` ("
-       "`order_id` INT(11) NOT NULL,"
-       "`order_detail_id` INT(11) NOT NULL,"
-       "`order_type` VARCHAR(50) NULL DEFAULT NULL,"
-       "`user_id` VARCHAR(50) NULL DEFAULT NULL,"
-       "`req_user` VARCHAR(50) NULL DEFAULT NULL,"
-       "`product_id` VARCHAR(30) NULL DEFAULT NULL,"
-       "`product_name` VARCHAR(200) NULL DEFAULT NULL,"
-       "`product_description` VARCHAR(100) NULL DEFAULT NULL,"
-       "`sku_id` INT(11) NULL DEFAULT NULL,"
-       "`sku_name` VARCHAR(200) NULL DEFAULT NULL,"
-       "`sku_description` VARCHAR(250) NULL DEFAULT NULL,"
-       "`quantity` INT(10) NULL DEFAULT NULL,"
-       "`template_fields` LONGTEXT NULL DEFAULT NULL,"
-       "`quantity_shipped` INT(10) NULL DEFAULT NULL,"
-       "`price_customer` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`price_seller` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`price_shipping` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`price_unit` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`price_customer_discount` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`price_seller_misc` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`price_seller_store_discount` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`price_seller_shipping` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`price_customer_store_discount` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`price_postage` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`price_customer_misc` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_customer_sales` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_direct_acct_sales` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_city` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_county` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_state` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_district` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_city_freight` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_county_freight` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_state_freight` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_district_freight` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_total_freight` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_taxable_sales` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_exempt_sales` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_non_taxable` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`tax_city_name` VARCHAR(50) NULL DEFAULT NULL,"
-       "`tax_county_name` VARCHAR(50) NULL DEFAULT NULL,"
-       "`tax_state_name` VARCHAR(30) NULL DEFAULT NULL,"
-       "`tax_zip` VARCHAR(10) NULL DEFAULT NULL,"
-       "`department_id` VARCHAR(30) NULL DEFAULT NULL,"
-       "`department_name` VARCHAR(30) NULL DEFAULT NULL,"
-       "`department_number` VARCHAR(30) NULL DEFAULT NULL,"
-       "`supplier_work_order_id` INT(10) NULL DEFAULT NULL,"
-       "`supplier_work_order_name` VARCHAR(30) NULL DEFAULT NULL,"
-       "`supplier_id` VARCHAR(30) NULL DEFAULT NULL,"
-       "`shipping_date` DATETIME NULL DEFAULT NULL,"
-       "`shipping_date_shipped` DATETIME NULL DEFAULT NULL,"
-       "`shipping_method` VARCHAR(50) NULL DEFAULT NULL,"
-       "`shipping_instructions` VARCHAR(200) NULL DEFAULT NULL,"
-       "`shipping_address_id` VARCHAR(40) NULL DEFAULT NULL,"
-       "`shipping_tracking` VARCHAR(20) NULL DEFAULT NULL,"
-       "`shipping_tax` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`postage_cost` DECIMAL(13,2) NULL DEFAULT NULL,"
-       "`postage_method` VARCHAR(50) NULL DEFAULT NULL,"
-       "`client_status_value` VARCHAR(50) NULL DEFAULT NULL,"
-       "`client_status_date` DATETIME NULL DEFAULT NULL,"
-       "`seller_status_value` VARCHAR(50) NULL DEFAULT NULL,"
-       "`seller_status_date` DATETIME NULL DEFAULT NULL,"
-       "`supplier_status_value` VARCHAR(50) NULL DEFAULT NULL,"
-       "`supplier_status_date` DATETIME NULL DEFAULT NULL,"
-       "`credit_card_settlement` LONGTEXT NULL DEFAULT NULL,"
-       "`kit` LONGTEXT NULL DEFAULT NULL,"
-       "`order_order_id` VARCHAR(30) NULL DEFAULT NULL,"
-       "`order_order_number` VARCHAR(30) NULL DEFAULT NULL,"
-       "`client_po` VARCHAR(30) NULL DEFAULT NULL,"
-       "`custom_work_order_fields` VARCHAR(30) NULL DEFAULT NULL,"
-       "`sales_work_order_id` INT(10) NULL DEFAULT NULL,"
-       "`product_type` VARCHAR(50) NULL DEFAULT NULL,"
-       "`list_vendor` VARCHAR(50) NULL DEFAULT NULL,"
-       "`finishing_options` LONGTEXT NULL DEFAULT NULL,"
-       "`coupons` VARCHAR(50) NULL DEFAULT NULL,"
-       "`attached_files` LONGTEXT NULL DEFAULT NULL,"
-       "`uploaded_files` LONGTEXT NULL DEFAULT NULL,"
-       "`sku_inventory_settings` VARCHAR(50) NULL DEFAULT NULL,"
-       "`imposed_using_default_impo` VARCHAR(50) NULL DEFAULT NULL,"
-       "`pagecount` INT(10) NULL DEFAULT NULL,"
-       "`catalog_tree_node_id` VARCHAR(50) NULL DEFAULT NULL,"
-       "`job_direct_options` VARCHAR(50) NULL DEFAULT NULL,"
-       "`impersonator_fields` LONGTEXT NULL DEFAULT NULL,"
-       "`requisition_status` VARCHAR(50) NULL DEFAULT NULL,"
-       "`approver_user` VARCHAR(50) NULL DEFAULT NULL,"
-       "`explanation` VARCHAR(50) NULL DEFAULT NULL,"
-       "`job_direct_settings` VARCHAR(50) NULL DEFAULT NULL,"
-       "PRIMARY KEY (`order_id`, `order_detail_id`));")
+           "`order_id` INT(11) NOT NULL,"
+           "`order_detail_id` INT(11) NOT NULL,"
+           "`order_type` VARCHAR(50) NULL DEFAULT NULL,"
+           "`user_id` VARCHAR(50) NULL DEFAULT NULL,"
+           "`req_user` VARCHAR(50) NULL DEFAULT NULL,"
+           "`product_id` VARCHAR(30) NULL DEFAULT NULL,"
+           "`product_name` VARCHAR(200) NULL DEFAULT NULL,"
+           "`product_description` VARCHAR(100) NULL DEFAULT NULL,"
+           "`sku_id` INT(11) NULL DEFAULT NULL,"
+           "`sku_name` VARCHAR(200) NULL DEFAULT NULL,"
+           "`sku_description` VARCHAR(250) NULL DEFAULT NULL,"
+           "`quantity` INT(10) NULL DEFAULT NULL,"
+           "`template_fields` LONGTEXT NULL DEFAULT NULL,"
+           "`quantity_shipped` INT(10) NULL DEFAULT NULL,"
+           "`price_customer` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`price_seller` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`price_shipping` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`price_unit` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`price_customer_discount` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`price_seller_misc` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`price_seller_store_discount` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`price_seller_shipping` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`price_customer_store_discount` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`price_postage` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`price_customer_misc` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_customer_sales` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_direct_acct_sales` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_city` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_county` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_state` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_district` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_city_freight` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_county_freight` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_state_freight` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_district_freight` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_total_freight` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_taxable_sales` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_exempt_sales` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_non_taxable` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`tax_city_name` VARCHAR(50) NULL DEFAULT NULL,"
+           "`tax_county_name` VARCHAR(50) NULL DEFAULT NULL,"
+           "`tax_state_name` VARCHAR(30) NULL DEFAULT NULL,"
+           "`tax_zip` VARCHAR(10) NULL DEFAULT NULL,"
+           "`department_id` VARCHAR(30) NULL DEFAULT NULL,"
+           "`department_name` VARCHAR(30) NULL DEFAULT NULL,"
+           "`department_number` VARCHAR(30) NULL DEFAULT NULL,"
+           "`supplier_work_order_id` INT(10) NULL DEFAULT NULL,"
+           "`supplier_work_order_name` VARCHAR(30) NULL DEFAULT NULL,"
+           "`supplier_id` VARCHAR(30) NULL DEFAULT NULL,"
+           "`shipping_date` DATETIME NULL DEFAULT NULL,"
+           "`shipping_date_shipped` DATETIME NULL DEFAULT NULL,"
+           "`shipping_method` VARCHAR(50) NULL DEFAULT NULL,"
+           "`shipping_instructions` VARCHAR(200) NULL DEFAULT NULL,"
+           "`shipping_address_id` VARCHAR(40) NULL DEFAULT NULL,"
+           "`shipping_tracking` VARCHAR(20) NULL DEFAULT NULL,"
+           "`shipping_tax` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`postage_cost` DECIMAL(13,2) NULL DEFAULT NULL,"
+           "`postage_method` VARCHAR(50) NULL DEFAULT NULL,"
+           "`client_status_value` VARCHAR(50) NULL DEFAULT NULL,"
+           "`client_status_date` DATETIME NULL DEFAULT NULL,"
+           "`seller_status_value` VARCHAR(50) NULL DEFAULT NULL,"
+           "`seller_status_date` DATETIME NULL DEFAULT NULL,"
+           "`supplier_status_value` VARCHAR(50) NULL DEFAULT NULL,"
+           "`supplier_status_date` DATETIME NULL DEFAULT NULL,"
+           "`credit_card_settlement` LONGTEXT NULL DEFAULT NULL,"
+           "`kit` LONGTEXT NULL DEFAULT NULL,"
+           "`order_order_id` VARCHAR(30) NULL DEFAULT NULL,"
+           "`order_order_number` VARCHAR(30) NULL DEFAULT NULL,"
+           "`client_po` VARCHAR(30) NULL DEFAULT NULL,"
+           "`custom_work_order_fields` VARCHAR(30) NULL DEFAULT NULL,"
+           "`sales_work_order_id` INT(10) NULL DEFAULT NULL,"
+           "`product_type` VARCHAR(50) NULL DEFAULT NULL,"
+           "`list_vendor` VARCHAR(50) NULL DEFAULT NULL,"
+           "`finishing_options` LONGTEXT NULL DEFAULT NULL,"
+           "`coupons` VARCHAR(50) NULL DEFAULT NULL,"
+           "`attached_files` LONGTEXT NULL DEFAULT NULL,"
+           "`uploaded_files` LONGTEXT NULL DEFAULT NULL,"
+           "`sku_inventory_settings` VARCHAR(50) NULL DEFAULT NULL,"
+           "`imposed_using_default_impo` VARCHAR(50) NULL DEFAULT NULL,"
+           "`pagecount` INT(10) NULL DEFAULT NULL,"
+           "`catalog_tree_node_id` VARCHAR(50) NULL DEFAULT NULL,"
+           "`job_direct_options` VARCHAR(50) NULL DEFAULT NULL,"
+           "`impersonator_fields` LONGTEXT NULL DEFAULT NULL,"
+           "`requisition_status` VARCHAR(50) NULL DEFAULT NULL,"
+           "`approver_user` VARCHAR(50) NULL DEFAULT NULL,"
+           "`explanation` VARCHAR(50) NULL DEFAULT NULL,"
+           "`job_direct_settings` VARCHAR(50) NULL DEFAULT NULL,"
+           "PRIMARY KEY (`order_id`, `order_detail_id`));")
     cursor.execute(sql)
 
     conn.commit()
@@ -427,14 +495,14 @@ def order_request_by_date(date_start, date_end, gbl, token, database=''):
     arg = elem(PartnerCredentials=token,
                DateRange={'Start': date_start, 'End': date_end})
 
-    print("Initializing OrderRequestByDate API connection")
+    print("Initialising OrderRequestByDate API connection")
     # creates python dict
     response = (client.service.GetOrdersByDate(arg))
     print("Returning API response")
 
-    # Initialize a commit counter
+    # Initialise a commit counter
     commit_cnt = 0
-    # Initialize processing date
+    # Initialise processing date
     process_date = ''
     # Let's keep track of all the processing dates, we'll use this later to
     # update all the FedEx tables in web_api_transactions.web_request_by_date()
@@ -483,7 +551,7 @@ def order_request_by_date(date_start, date_end, gbl, token, database=''):
                 print('Processing Orders for: {0}'.format(process_date))
                 # print(rec['order_id'], rec['create_date'])
 
-            # """Insert MySQL update functions here"""
+            # """Insert SQLite update functions here"""
             if rec['order_id'] not in history:
                 print("Updating {0} order id: {1}".format(gbl.token_names[gbl.token], rec['order_id']))
 
@@ -530,7 +598,7 @@ def clean_unused_orders(gbl, token):
     print("Cleaning up database")
     conn = sqlite3.connect(gbl.db_name)
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM OrderDetail WHERE product_id != '853';")
+    cursor.execute("DELETE FROM OrderDetail WHERE product_id != '853' OR '3029';")
     conn.commit()
     conn.execute("VACUUM;")
     conn.close()

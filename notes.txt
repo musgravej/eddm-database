@@ -49,3 +49,18 @@ If an order.user_id not in v2fbluserdata.agent_id flag the file and move to a st
 
 New portal id will be 19404
 New product id will be 3029
+
+
+select *
+from ProcessingFiles
+;
+
+select filename
+       ,order_datetime_utc
+       ,order_datetime_pst
+       , abs(cast(
+              (julianday(order_datetime_pst) - julianday(order_datetime_utc)) * 24 * 60
+              as INTEGER
+              )) 'date diff'
+from ProcessingFiles
+;
