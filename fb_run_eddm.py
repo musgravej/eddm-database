@@ -1,4 +1,4 @@
-import dbfread
+# import dbfread
 import dbf
 import csv
 import requests
@@ -92,15 +92,15 @@ def process_dat(fle_path, fle):
             write_ini("{0}".format(fle[:-4]), i)
 
 
-def read_dbf(fle):
-    # for rec in dbfread.DBF(fle):
-    #     print(rec)
-
-    db = dbfread.DBF('{fle}.dbf'.format(fle=fle))
-    print(db.fields)
-    # return
-    for rec in db:
-        print(rec)
+# def read_dbf(fle):
+#     # for rec in dbfread.DBF(fle):
+#     #     print(rec)
+#
+#     db = dbfread.DBF('{fle}.dbf'.format(fle=fle))
+#     print(db.fields)
+#     # return
+#     for rec in db:
+#         print(rec)
 
 
 def zip_ckd(zipcode):
