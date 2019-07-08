@@ -483,7 +483,7 @@ def order_request_by_date(date_start, date_end, gbl, token, database=''):
                 print('Processing Orders for: {0}'.format(process_date))
                 # print(rec['order_id'], rec['create_date'])
 
-            # """Insert MySQL update functions here"""
+            # """Insert SQLite update functions here"""
             if rec['order_id'] not in history:
                 print("Updating {0} order id: {1}".format(gbl.token_names[gbl.token], rec['order_id']))
 

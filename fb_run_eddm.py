@@ -188,7 +188,7 @@ def download_web_orders(gblv):
     day_start = 19
 
     month_end = 7
-    day_end = 2
+    day_end = 5
 
     date_start = (datetime.datetime.strptime("{y}-{m}-{d} 00:00:00".format(
                   m=month_start,y=year,d=str(day_start).zfill(2)),"%Y-%m-%d %H:%M:%S"))
