@@ -64,3 +64,22 @@ select filename
               )) 'date diff'
 from ProcessingFiles
 ;
+
+SELECT a.filename
+       , c.order_number||'-'||b.order_detail_id 'job number'
+       , a.order_datetime_pst 'file pst'
+       , c.create_date 'order date'
+       , a.order_records 'file records'
+       , a.order_file_touches 'file touches'
+       , a.user_id 'file user id'
+       , (b.pagecount / 2) 'order touches'
+       , abs(cast(
+              (julianday(a.order_datetime_pst) - julianday(c.create_date)) * 24 * 60
+              as INTEGER
+              )) 'min diff'
+FROM ProcessingFiles a
+JOIN OrderDetail b
+ON a.user_id = b.user_id AND a.order_records = b.quantity
+JOIN OrderRequestByDate c
+ON b.order_id = c.order_id
+;

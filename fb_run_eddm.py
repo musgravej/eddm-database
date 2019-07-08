@@ -84,7 +84,6 @@ def process_dat(fle_path, fle):
 
     get_order_by_date.update_processing_file_table(fle, eddm_order, gblv)
 
-    # TODO Take up where you left off here
     return
 
     # If one touch, make one file
@@ -196,13 +195,15 @@ def download_web_orders(gblv):
     day_start = 19
 
     month_end = 7
-    day_end = 5
+    day_end = 8
 
     date_start = (datetime.datetime.strptime("{y}-{m}-{d} 00:00:00".format(
                   m=month_start,y=year,d=str(day_start).zfill(2)),"%Y-%m-%d %H:%M:%S"))
 
-    date_end = (datetime.datetime.strptime("{y}-{m}-{d} 23:59:59".format(
-                  m=month_end,y=year,d=str(day_end).zfill(2)),"%Y-%m-%d %H:%M:%S"))
+    # date_end = (datetime.datetime.strptime("{y}-{m}-{d} 23:59:59".format(
+    #               m=month_end,y=year,d=str(day_end).zfill(2)),"%Y-%m-%d %H:%M:%S"))
+
+    date_end = datetime.datetime.today()
 
     get_order_by_date.order_request_by_date(date_start, date_end, gblv, gblv.token)
     get_order_by_date.clean_unused_orders(gblv, gblv.token)
@@ -234,8 +235,8 @@ if __name__ == '__main__':
 
     get_order_by_date.initialise_databases(gblv)
     get_order_by_date.processing_files_table(gblv)
-    # import_userdata(gblv)
-    # download_web_orders(gblv)
+    import_userdata(gblv)
+    download_web_orders(gblv)
     # exit()
 
     orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']

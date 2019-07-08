@@ -252,7 +252,12 @@ class Record(dict):
         self['order_id'] = elem['ID']['_value_1']
         self['order_number'] = elem['OrderNumber']
         self['order_description'] = elem['Description']
+
         self['create_date'] = elem['CreateDate']
+        # TODO two conversions here
+        pst_object = elem['CreateDate'].replace(tzinfo=(pytz.timezone('America/Los_Angeles')))
+        self['create_date_pst'] = pst_object.astimezone(pytz.timezone('America/Los_Angeles'))
+
         self['status'] = elem['Status']
         self['user_id'] = elem['User']['ID']['_value_1']
         self['user_group_syncmode'] = elem['UserGroups']['SyncMode']
@@ -272,6 +277,8 @@ class Record(dict):
 
 
 def processing_files_table(gblv):
+    print("Creating processing file table")
+
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
 
@@ -285,10 +292,11 @@ def processing_files_table(gblv):
 
         userid = parse_filename[0]
         order_datetime_utc = datetime.datetime.strptime(parse_filename[1][:-4], "%Y%m%d%H%M%S")
-        order_datetime_pst = order_datetime_utc.replace(tzinfo=pytz.timezone('US/Pacific'))
+        order_datetime_utc = order_datetime_utc.replace(tzinfo=pytz.utc)
+        order_datetime_pst = order_datetime_utc.astimezone(pytz.timezone('America/Los_Angeles'))
 
-        print(order, order_datetime_utc.strftime("%Y-%m-%d %H:%M:%S %Z%z"),
-              order_datetime_pst.strftime("%Y-%m-%d %H:%M:%S %Z%z"))
+        # print(order, order_datetime_utc.strftime("%Y-%m-%d %H:%M:%S %Z%z"),
+        #       order_datetime_pst.strftime("%Y-%m-%d %H:%M:%S %Z%z"))
 
         cursor.execute(sql, (order, order_datetime_utc, order_datetime_pst, userid))
 
@@ -336,6 +344,7 @@ def initialise_databases(gblv):
            "`token` VARCHAR(25) NULL DEFAULT NULL,"
            "`order_description` VARCHAR(50) NULL DEFAULT NULL,"
            "`create_date` DATETIME NULL DEFAULT NULL,"
+           "`create_date_pst` DATETIME NULL DEFAULT NULL,"
            "`status` VARCHAR(50) NULL DEFAULT NULL,"
            "`user_id` VARCHAR(50) NULL DEFAULT NULL,"
            "`user_group_syncmode` VARCHAR(50) NULL DEFAULT NULL,"
@@ -598,7 +607,7 @@ def clean_unused_orders(gbl, token):
     print("Cleaning up database")
     conn = sqlite3.connect(gbl.db_name)
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM OrderDetail WHERE product_id != '853' OR '3029';")
+    # cursor.execute("DELETE FROM OrderDetail WHERE product_id != '853' AND product_id != '3029';")
     conn.commit()
     conn.execute("VACUUM;")
     conn.close()
