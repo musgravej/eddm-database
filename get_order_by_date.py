@@ -254,9 +254,7 @@ class Record(dict):
         self['order_description'] = elem['Description']
 
         self['create_date'] = elem['CreateDate']
-        # TODO two conversions here
-        pst_object = elem['CreateDate'].replace(tzinfo=(pytz.timezone('America/Los_Angeles')))
-        self['create_date_pst'] = pst_object.astimezone(pytz.timezone('America/Los_Angeles'))
+        self['create_date_pst'] = pytz.timezone('America/Los_Angeles').localize(elem['CreateDate'])
 
         self['status'] = elem['Status']
         self['user_id'] = elem['User']['ID']['_value_1']
@@ -316,6 +314,31 @@ def update_processing_file_table(fle, eddm_order, gblv):
 
     conn.commit()
     conn.close()
+
+
+def file_to_order_match(fle, gblv):
+    sql = ("SELECT count(), a.filename "
+           ", c.order_number||'-'||b.order_detail_id 'job number', "
+           "a.order_datetime_utc 'file utc', a.order_datetime_pst 'file pst', "
+           "c.create_date_pst 'order pst', a.order_records 'file records', "
+           "a.order_file_touches 'file touches', a.user_id 'file user id', "
+           "(b.pagecount / 2) 'order touches', "
+           "abs(cast((julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
+           "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
+           "AND a.order_records = b.quantity JOIN OrderRequestByDate c "
+           'ON b.order_id = c.order_id WHERE "min diff" <= 10 AND a.filename = ?;')
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql, (fle,))
+
+    ans = cursor.fetchone()
+    result = ans[0] != 0
+
+    conn.commit()
+    conn.close()
+
+    return result
 
 
 def initialise_databases(gblv):

@@ -1,4 +1,3 @@
-# import dbfread
 import dbf
 import csv
 import requests
@@ -21,7 +20,7 @@ This script will process FB EDDM lists downloaded from eddm order portal
 # TODO come up with time / file / order comparision
 
 
-def create_database(fle_path, fle, touch=''):
+def create_database(eddm_order, fle_path, fle, touch=''):
 
     newdb = os.path.join(fle_path, "{0}{1}".format(fle[:-4], touch))
 
@@ -63,6 +62,21 @@ def create_database(fle_path, fle, touch=''):
                  os.path.join(gblv.accuzip_path, "{0}{1}.dbf".format(fle[:-4], touch)))
 
 
+def write_azzuzip_files(eddm_order, fle_path, fle):
+
+    # If one touch, make one file
+    if eddm_order.file_touches == 1:
+        # print(fle)
+        create_database(eddm_order, fle_path, fle)
+        write_ini(eddm_order, "{0}".format(fle[:-4]))
+
+    # If two touches, make two files
+    if eddm_order.file_touches == 2:
+        for i, t in enumerate(['_1', '_2'], 1):
+            create_database(eddm_order, fle_path, fle, t)
+            write_ini(eddm_order, "{0}".format(fle[:-4]), i)
+
+
 def process_dat(fle_path, fle):
 
     eddm_order = settings.EDDMOrder()
@@ -83,31 +97,14 @@ def process_dat(fle_path, fle):
         eddm_order.file_qty = running_cnt
 
     get_order_by_date.update_processing_file_table(fle, eddm_order, gblv)
-
-    return
-
-    # If one touch, make one file
-    if eddm_order.file_touches == 1:
-        # print(fle)
-        create_database(fle_path, fle)
-        write_ini("{0}".format(fle[:-4]))
-
-    # If two touches, make two files
-    if eddm_order.file_touches == 2:
-        for i, t in enumerate(['_1', '_2'], 1):
-            create_database(fle_path, fle, t)
-            write_ini("{0}".format(fle[:-4]), i)
-
-
-# def read_dbf(fle):
-#     # for rec in dbfread.DBF(fle):
-#     #     print(rec)
-#
-#     db = dbfread.DBF('{fle}.dbf'.format(fle=fle))
-#     print(db.fields)
-#     # return
-#     for rec in db:
-#         print(rec)
+    # print(fle, get_order_by_date.file_to_order_match(fle, gblv))
+    if get_order_by_date.file_to_order_match(fle, gblv):
+        write_azzuzip_files(eddm_order, fle_path, fle)
+        # TODO Update FileHistory table
+    else:
+        # No match to file in downloaded order data
+        # TODO Move files and log errors
+        pass
 
 
 def zip_ckd(zipcode):
@@ -125,7 +122,7 @@ def sum_digits(n):
     return r
 
 
-def write_ini(fle, touch=False):
+def write_ini(eddm_order, fle, touch=False):
     eddm_order.set_touch_1_maildate(fle[-14:])
     eddm_order.set_touch_2_maildate()
 
@@ -142,12 +139,12 @@ def write_ini(fle, touch=False):
     if touch:
         if touch == 1:
             config.set('mailing_dates', "{0}_{1}".format(fle, touch),
-                       datetime.datetime.strftime(gblv.touch_1_maildate, "%m/%d/%Y"))
+                       datetime.datetime.strftime(eddm_order.touch_1_maildate, "%m/%d/%Y"))
         if touch == 2:
             config.set('mailing_dates', "{0}_{1}".format(fle, touch),
-                       datetime.datetime.strftime(gblv.touch_2_maildate, "%m/%d/%Y"))
+                       datetime.datetime.strftime(eddm_order.touch_2_maildate, "%m/%d/%Y"))
     else:
-        config.set('mailing_dates', fle, datetime.datetime.strftime(gblv.touch_1_maildate, "%m/%d/%Y"))
+        config.set('mailing_dates', fle, datetime.datetime.strftime(eddm_order.touch_1_maildate, "%m/%d/%Y"))
 
     with open(configfile, 'w') as c:
         config.write(c)
@@ -237,7 +234,6 @@ if __name__ == '__main__':
     get_order_by_date.processing_files_table(gblv)
     import_userdata(gblv)
     download_web_orders(gblv)
-    # exit()
 
     orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
     for order in orders:

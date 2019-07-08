@@ -10,6 +10,18 @@ match agent id and timestamp and qty?
 Current users in:
 I:\Customer Files\In Progress\01-Web Storefront DBs\FB Marketing Toolkit\Current
 
+Not needed function:
+# def read_dbf(fle):
+#     import dbfread
+#     for rec in dbfread.DBF(fle):
+#         print(rec)
+#
+#     db = dbfread.DBF('{fle}.dbf'.format(fle=fle))
+#     print(db.fields)
+#     # return
+#     for rec in db:
+#         print(rec)
+
 
 select finishing_options,
        json_extract(finishing_options, '$.FinishingOption[0].Value') 'drops'
@@ -47,6 +59,8 @@ Order data is downloaded as [user_id]_[datetime]
 V2FBLUSERDATA contains the agent_id (FB field)
 If an order.user_id not in v2fbluserdata.agent_id flag the file and move to a standby folder
 
+Check for same number of touches
+
 New portal id will be 19404
 New product id will be 3029
 
@@ -75,6 +89,28 @@ SELECT a.filename
        , (b.pagecount / 2) 'order touches'
        , abs(cast(
               (julianday(a.order_datetime_pst) - julianday(c.create_date)) * 24 * 60
+              as INTEGER
+              )) 'min diff'
+FROM ProcessingFiles a
+JOIN OrderDetail b
+ON a.user_id = b.user_id AND a.order_records = b.quantity
+JOIN OrderRequestByDate c
+ON b.order_id = c.order_id
+;
+
+-- revised sql with new datetimes
+
+SELECT a.filename
+       , c.order_number||'-'||b.order_detail_id 'job number'
+       , a.order_datetime_utc 'file utc'
+       , a.order_datetime_pst 'file pst'
+       , c.create_date_pst 'order pst'
+       , a.order_records 'file records'
+       , a.order_file_touches 'file touches'
+       , a.user_id 'file user id'
+       , (b.pagecount / 2) 'order touches'
+       , abs(cast(
+              (julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60
               as INTEGER
               )) 'min diff'
 FROM ProcessingFiles a
