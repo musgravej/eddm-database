@@ -16,7 +16,6 @@ import sqlite3
 This script will process FB EDDM lists downloaded from eddm order portal
 """
 # TODO Add function that will open the production pdf and check the touch counts
-# TODO Add V2FBLUSERDATA to SQLite database
 # TODO come up with time / file / order comparision
 
 
@@ -174,7 +173,7 @@ def import_userdata(gblv):
             agentid = line[2:7]
             nickname = line[33:93].strip()
             fname = line[93:153].strip()
-            lname = line[213:283].strip()
+            lname = line[213:273].strip()
             cancel_date = (datetime.datetime.strptime(line[386:394], '%Y%m%d')
                            if not line[386:394] == '00000000' else None)
 
@@ -234,6 +233,8 @@ if __name__ == '__main__':
     get_order_by_date.processing_files_table(gblv)
     import_userdata(gblv)
     download_web_orders(gblv)
+
+    exit()
 
     orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
     for order in orders:
