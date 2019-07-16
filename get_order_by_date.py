@@ -280,6 +280,9 @@ def processing_files_table(gblv):
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
 
+    cursor.execute("DELETE FROM `ProcessingFiles`;")
+    conn.commit()
+
     orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
 
     for order in orders:
@@ -316,7 +319,40 @@ def update_processing_file_table(fle, eddm_order, gblv):
     conn.close()
 
 
-def file_to_order_match(fle, gblv):
+def update_file_history_table(gblv, **insert_values):
+    # filename = fle
+    # jobname = match_search[2]
+    # processing_date = datetime.datetime.now()
+    # order_records = eddm_order.file_qty
+    # total_touches = eddm_order.file_touches
+    # touch = 1
+    # mailing_date = eddm_order.touch_1_maildate
+    # user_id = match_search[8]
+
+    sql = ("REPLACE INTO `FileHistory` VALUES ("
+           "?, ?, DATE(?), ?, ?, ?, DATE(?), ?);")
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql, (insert_values['filename'], 
+                         insert_values['jobname'], 
+                         insert_values['processing_date'],
+                         insert_values['order_records'], 
+                         insert_values['total_touches'], 
+                         insert_values['touch'], 
+                         insert_values['mailing_date'], 
+                         insert_values['user_id']))
+
+    conn.commit()
+    conn.close()
+
+
+def file_to_order_match(fle, gblv, min_diff=120):
+    """
+    Returns true if there is a hard match.  The date in the file, the number of touches,
+    the number of records all match with the order data from the API.  
+    The date of the order data and the file data are within min_diff of each other.
+    """
     sql = ("SELECT count(), a.filename "
            ", c.order_number||'-'||b.order_detail_id 'job number', "
            "a.order_datetime_utc 'file utc', a.order_datetime_pst 'file pst', "
@@ -326,14 +362,14 @@ def file_to_order_match(fle, gblv):
            "abs(cast((julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
            "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
            "AND a.order_records = b.quantity JOIN OrderRequestByDate c "
-           'ON b.order_id = c.order_id WHERE "min diff" <= 10 AND a.filename = ?;')
+           'ON b.order_id = c.order_id WHERE "min diff" <= ? AND a.filename = ?;')
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
-    cursor.execute(sql, (fle,))
+    cursor.execute(sql, (min_diff, fle,))
 
     ans = cursor.fetchone()
-    result = ans[0] != 0
+    result = (ans[0] != 0, ans)
 
     conn.commit()
     conn.close()
@@ -347,20 +383,20 @@ def initialise_databases(gblv):
     cursor = conn.cursor()
 
     # comment out for production environment
-    sql = "DROP TABLE IF EXISTS `OrderRequestByDate`;"
-    cursor.execute(sql)
-    sql = "DROP TABLE IF EXISTS `RequestHistory`;"
-    cursor.execute(sql)
-    sql = "DROP TABLE IF EXISTS `OrderDetail`;"
-    cursor.execute(sql)
-    sql = "DROP TABLE IF EXISTS `ProcessingFiles`;"
-    cursor.execute(sql)
-    sql = "DROP TABLE IF EXISTS `FileHistory`;"
-    cursor.execute(sql)
+    # sql = "DROP TABLE IF EXISTS `OrderRequestByDate`;"
+    # cursor.execute(sql)
+    # sql = "DROP TABLE IF EXISTS `RequestHistory`;"
+    # cursor.execute(sql)
+    # sql = "DROP TABLE IF EXISTS `OrderDetail`;"
+    # cursor.execute(sql)
+    # sql = "DROP TABLE IF EXISTS `ProcessingFiles`;"
+    # cursor.execute(sql)
+    # sql = "DROP TABLE IF EXISTS `FileHistory`;"
+    # cursor.execute(sql)
+    # conn.commit()
+    # 
 
-    conn.commit()
-
-    sql = ("CREATE TABLE `OrderRequestByDate` ("
+    sql = ("CREATE TABLE IF NOT EXISTS `OrderRequestByDate` ("
            "`order_id` INT(10) NOT NULL,"
            "`fetch_date` DATETIME NULL DEFAULT NULL,"
            "`order_number` VARCHAR(25) NULL DEFAULT NULL,"
@@ -385,14 +421,14 @@ def initialise_databases(gblv):
 
     cursor.execute(sql)
 
-    sql = ("CREATE TABLE `RequestHistory` ("
+    sql = ("CREATE TABLE IF NOT EXISTS `RequestHistory` ("
            "`order_id` INT(10) NOT NULL,"
            "`request_date` DATETIME NULL DEFAULT NULL,"
            "PRIMARY KEY (`order_id`));")
     cursor.execute(sql)
 
     # table of currently processing files
-    sql = ("CREATE TABLE `ProcessingFiles` ("
+    sql = ("CREATE TABLE IF NOT EXISTS `ProcessingFiles` ("
            "`filename` VARCHAR(100) NOT NULL,"
            "`order_datetime_utc` DATETIME NULL DEFAULT NULL,"
            "`order_datetime_pst` DATETIME NULL DEFAULT NULL,"
@@ -403,17 +439,19 @@ def initialise_databases(gblv):
     cursor.execute(sql)
 
     # table of historical file data
-    sql = ("CREATE TABLE `FileHistory` ("
+    sql = ("CREATE TABLE IF NOT EXISTS `FileHistory` ("
            "`filename` VARCHAR(100) NOT NULL,"
            "`jobname` VARCHAR(100) NOT NULL,"
            "`processing_date` DATETIME NULL DEFAULT NULL,"
            "`order_records` INT(8) NULL DEFAULT NULL,"
-           "`order_touches` INT(1) NULL DEFAULT NULL,"
+           "`total_touches` INT(1) NULL DEFAULT NULL,"
+           "`touch` INT(1) NULL DEFAULT NULL,"
+           "`mailing_date` DATETIME NULL DEFAULT NULL,"
            "`user_id` VARCHAR(50) NULL DEFAULT NULL,"
            "PRIMARY KEY (`filename`));")
     cursor.execute(sql)
 
-    sql = ("CREATE TABLE `OrderDetail` ("
+    sql = ("CREATE TABLE IF NOT EXISTS `OrderDetail` ("
            "`order_id` INT(11) NOT NULL,"
            "`order_detail_id` INT(11) NOT NULL,"
            "`order_type` VARCHAR(50) NULL DEFAULT NULL,"
@@ -630,7 +668,7 @@ def clean_unused_orders(gbl, token):
     print("Cleaning up database")
     conn = sqlite3.connect(gbl.db_name)
     cursor = conn.cursor()
-    # cursor.execute("DELETE FROM OrderDetail WHERE product_id != '853' AND product_id != '3029';")
+    cursor.execute("DELETE FROM OrderDetail WHERE product_id != '853' AND product_id != '3029';")
     conn.commit()
     conn.execute("VACUUM;")
     conn.close()

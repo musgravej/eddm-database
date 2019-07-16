@@ -51,14 +51,30 @@ class GlobalVar:
                                             'V2FBLUSERDATA.TXT'))
 
         # P:\FTPfiles\LocalUser\FB - EDDM
-        self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm'))
-        self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
-
-        self.create_accuzip_dir()
+        # self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm'))
+        # self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
+        self.downloaded_orders_path = os.curdir
+        self.accuzip_path = os.curdir
+        self.hold_path = os.curdir
+        self.reset_routes_path = os.curdir
 
     def create_accuzip_dir(self):
         if not os.path.exists(self.accuzip_path):
             os.mkdir(self.accuzip_path)
+
+    def set_order_paths(self):
+        if self.environment.upper() == 'PRODUCTION':
+            self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm', 'production'))
+            self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
+            self.hold_path = os.path.join(self.downloaded_orders_path, 'hold')
+            self.reset_routes_path = os.path.join(self.downloaded_orders_path, 'reset_routes')
+            self.create_accuzip_dir()
+        else:
+            self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm', 'test'))
+            self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
+            self.hold_path = os.path.join(self.downloaded_orders_path, 'hold')
+            self.reset_routes_path = os.path.join(self.downloaded_orders_path, 'reset_routes')
+            self.create_accuzip_dir()
 
     def set_environment(self, env):
         # set to 'Production' for production, anything else, not production

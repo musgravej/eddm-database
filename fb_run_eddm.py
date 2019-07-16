@@ -16,7 +16,6 @@ import sqlite3
 This script will process FB EDDM lists downloaded from eddm order portal
 """
 # TODO Add function that will open the production pdf and check the touch counts
-# TODO come up with time / file / order comparision
 
 
 def create_database(eddm_order, fle_path, fle, touch=''):
@@ -61,31 +60,47 @@ def create_database(eddm_order, fle_path, fle, touch=''):
                  os.path.join(gblv.accuzip_path, "{0}{1}.dbf".format(fle[:-4], touch)))
 
 
-def write_azzuzip_files(eddm_order, fle_path, fle):
-
+def write_azzuzip_files(eddm_order, fle_path, fle, match_search):
+    # TODO Update FileHistory table
     # If one touch, make one file
     if eddm_order.file_touches == 1:
-        # print(fle)
+        # print(match_search)
+
+        insert_values = {'filename': fle ,'jobname': match_search[1][2],
+                         'processing_date': datetime.datetime.now(),
+                         'order_records': eddm_order.file_qty,
+                         'total_touches': eddm_order.file_touches,
+                         'touch': 1 ,'mailing_date': eddm_order.touch_1_maildate,
+                         'user_id': match_search[1][8]}
+
         create_database(eddm_order, fle_path, fle)
+        get_order_by_date.update_file_history_table(gblv, **insert_values)
         write_ini(eddm_order, "{0}".format(fle[:-4]))
 
     # If two touches, make two files
     if eddm_order.file_touches == 2:
         for i, t in enumerate(['_1', '_2'], 1):
+            insert_values = {'filename': "{0}{1}.dat".format(fle[:-4], t),
+                             'jobname': match_search[1][2],
+                             'processing_date': datetime.datetime.now(),
+                             'order_records': eddm_order.file_qty,
+                             'total_touches': eddm_order.file_touches,
+                             'touch': i,
+                             'mailing_date': {1: eddm_order.touch_1_maildate, 2: eddm_order.touch_2_maildate}[i],
+                             'user_id': match_search[1][8]}
+
             create_database(eddm_order, fle_path, fle, t)
+            get_order_by_date.update_file_history_table(gblv, **insert_values)
             write_ini(eddm_order, "{0}".format(fle[:-4]), i)
 
 
-def process_dat(fle_path, fle):
-
+def process_dat(fle):
+    process_path = os.path.join(gblv.downloaded_orders_path, fle[:-4])
     eddm_order = settings.EDDMOrder()
     eddm_order.set_mailing_residential(True)
 
-    shutil.copy2(os.path.join(gblv.downloaded_orders_path, fle),
-                 os.path.join(fle_path, fle))
-
     # get number of touches in the file
-    with open(os.path.join(fle_path, fle), 'r') as routes:
+    with open(os.path.join(gblv.downloaded_orders_path, fle), 'r') as routes:
         csvr = csv.DictReader(routes, eddm_order.dat_header, delimiter='\t')
         next(csvr)
         running_cnt = 0
@@ -96,10 +111,18 @@ def process_dat(fle_path, fle):
         eddm_order.file_qty = running_cnt
 
     get_order_by_date.update_processing_file_table(fle, eddm_order, gblv)
-    # print(fle, get_order_by_date.file_to_order_match(fle, gblv))
-    if get_order_by_date.file_to_order_match(fle, gblv):
-        write_azzuzip_files(eddm_order, fle_path, fle)
-        # TODO Update FileHistory table
+    match_search = get_order_by_date.file_to_order_match(fle, gblv, 120)
+
+    if match_search[0]:
+        print("Full Match: {}".format(fle))
+        print(match_search[1])
+
+        create_process_order_path(process_path)
+        shutil.copy2(os.path.join(gblv.downloaded_orders_path, fle),
+                     os.path.join(process_path, fle))
+
+        write_azzuzip_files(eddm_order, process_path, fle, match_search)
+
     else:
         # No match to file in downloaded order data
         # TODO Move files and log errors
@@ -183,23 +206,24 @@ def import_userdata(gblv):
     conn.commit()
 
 
-def download_web_orders(gblv):
+def download_web_orders(gblv, back_days):
 
-    year = 2019
-
-    month_start = 6
-    day_start = 19
-
-    month_end = 7
-    day_end = 8
-
-    date_start = (datetime.datetime.strptime("{y}-{m}-{d} 00:00:00".format(
-                  m=month_start,y=year,d=str(day_start).zfill(2)),"%Y-%m-%d %H:%M:%S"))
+    # year = 2019
+    #
+    # month_start = 7
+    # day_start = 1
+    #
+    # month_end = 7
+    # day_end = 8
+    #
+    # date_start = (datetime.datetime.strptime("{y}-{m}-{d} 00:00:00".format(
+    #               m=month_start,y=year,d=str(day_start).zfill(2)),"%Y-%m-%d %H:%M:%S"))
 
     # date_end = (datetime.datetime.strptime("{y}-{m}-{d} 23:59:59".format(
     #               m=month_end,y=year,d=str(day_end).zfill(2)),"%Y-%m-%d %H:%M:%S"))
 
     date_end = datetime.datetime.today()
+    date_start = date_end - datetime.timedelta(days=back_days)
 
     get_order_by_date.order_request_by_date(date_start, date_end, gblv, gblv.token)
     get_order_by_date.clean_unused_orders(gblv, gblv.token)
@@ -216,13 +240,16 @@ def create_process_order_path(process_path):
 def process_order(file):
     process_path = os.path.join(gblv.downloaded_orders_path, file[:-4])
     create_process_order_path(process_path)
-    process_dat(process_path, file)
+    process_dat(file)
 
 
 if __name__ == '__main__':
     global gblv
     gblv = settings.GlobalVar()
+    # Set environment to 'PRODUCTION' for production
     gblv.set_environment('QA')
+    # gblv.set_environment('PRODUCTION')
+    gblv.set_order_paths()
     gblv.set_token_name()
     gblv.set_db_name()
 
@@ -231,12 +258,13 @@ if __name__ == '__main__':
 
     get_order_by_date.initialise_databases(gblv)
     get_order_by_date.processing_files_table(gblv)
-    import_userdata(gblv)
-    download_web_orders(gblv)
+    # import_userdata(gblv)
+    # download_web_orders(gblv, 15)
 
-    exit()
+    # exit()
+    # TODO add code here for running through hold path for orders
 
     orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
     for order in orders:
-        process_order(order)
+        process_dat(order)
         # os.remove(os.path.join(gblv.downloaded_orders_path, order))
