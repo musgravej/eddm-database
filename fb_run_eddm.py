@@ -18,22 +18,31 @@ This script will process FB EDDM lists downloaded from eddm order portal
 # TODO Add function that will open the production pdf and check the touch counts
 
 
-def create_database(eddm_order, fle_path, fle, touch=''):
+def create_database(eddm_order, fle_path, db_name, order_file):
+    """
+    Writes the eddm job db file used by accuzip
+    Saves a copy in the the job job folder, and saves a copy to the accuzip folder
 
-    newdb = os.path.join(fle_path, "{0}{1}".format(fle[:-4], touch))
+    :param eddm_order: eddm order object
+    :param fle_path: path to save the files to
+    :param db_name: name of new db file
+    :param order_file: name of the original order file
+    :return:
+    """
+    full_newdb_path = os.path.join(fle_path, db_name)
 
-    db = dbf.Table("{0}".format(newdb), ('FIRST C(25); ADDRESS C(1); CITY C(28); '
+    db = dbf.Table("{0}".format(full_newdb_path), ('FIRST C(25); ADDRESS C(1); CITY C(28); '
                                          'ST C(2); ZIP C(10); CRRT C(4); '
                                          'WALKSEQ_ C(7); STATUS_ C(1); '
                                          'BARCODE C(14); X C(1)')
                    )
 
-    db_counts = dbf.Table("{0} CRRT Counts".format(newdb), ('ZIP C(6); CRRT C(5); RES C(6); POS C(5)'))
+    db_counts = dbf.Table("{0} CRRT Counts".format(full_newdb_path), ('ZIP C(6); CRRT C(5); RES C(6); POS C(5)'))
 
     db.open(mode=dbf.READ_WRITE)
     db_counts.open(mode=dbf.READ_WRITE)
 
-    with open(os.path.join(fle_path, fle), 'r') as routes:
+    with open(os.path.join(gblv.downloaded_orders_path, order_file), 'r') as routes:
         csvr = csv.DictReader(routes, eddm_order.dat_header, delimiter='\t')
         next(csvr)
         for rec in csvr:
@@ -55,49 +64,53 @@ def create_database(eddm_order, fle_path, fle, touch=''):
     db.close()
     db_counts.close()
 
-    # Move copies to AccuZip folder
-    shutil.copy(os.path.join(fle_path, "{0}{1}.dbf".format(fle[:-4], touch)),
-                 os.path.join(gblv.accuzip_path, "{0}{1}.dbf".format(fle[:-4], touch)))
+    shutil.copy(os.path.join(fle_path, "{}.dbf".format(db_name)),
+                os.path.join(gblv.accuzip_path, "{}.dbf".format(db_name)))
 
 
 def write_azzuzip_files(eddm_order, fle_path, fle, match_search):
-    # TODO Update FileHistory table
+
     # If one touch, make one file
     if eddm_order.file_touches == 1:
-        # print(match_search)
-
-        insert_values = {'filename': fle ,'jobname': match_search[1][2],
+        insert_values = {'filename': fle, 'jobname': match_search[2],
                          'processing_date': datetime.datetime.now(),
                          'order_records': eddm_order.file_qty,
                          'total_touches': eddm_order.file_touches,
                          'touch': 1 ,'mailing_date': eddm_order.touch_1_maildate,
-                         'user_id': match_search[1][8]}
+                         'user_id': match_search[8]}
 
-        create_database(eddm_order, fle_path, fle)
+        # Write eddm order db file
+        create_database(eddm_order, fle_path, insert_values['jobname'], fle)
+        # Insert order into FileHistory table
         get_order_by_date.update_file_history_table(gblv, **insert_values)
-        write_ini(eddm_order, "{0}".format(fle[:-4]))
+        # Update ini file in accuzip folder
+        write_ini(eddm_order, insert_values['jobname'], insert_values['mailing_date'])
 
     # If two touches, make two files
     if eddm_order.file_touches == 2:
         for i, t in enumerate(['_1', '_2'], 1):
             insert_values = {'filename': "{0}{1}.dat".format(fle[:-4], t),
-                             'jobname': match_search[1][2],
+                             'jobname': "{0}_{1}".format(match_search[2], i),
                              'processing_date': datetime.datetime.now(),
                              'order_records': eddm_order.file_qty,
                              'total_touches': eddm_order.file_touches,
                              'touch': i,
                              'mailing_date': {1: eddm_order.touch_1_maildate, 2: eddm_order.touch_2_maildate}[i],
-                             'user_id': match_search[1][8]}
+                             'user_id': match_search[8]}
 
-            create_database(eddm_order, fle_path, fle, t)
+            # Write eddm order db file
+            create_database(eddm_order, fle_path, insert_values['jobname'], fle)
+            # Insert order into FileHistory table
             get_order_by_date.update_file_history_table(gblv, **insert_values)
-            write_ini(eddm_order, "{0}".format(fle[:-4]), i)
+            # Update ini file in accuzip folder
+            write_ini(eddm_order, insert_values['jobname'], insert_values['mailing_date'])
 
 
 def process_dat(fle):
-    process_path = os.path.join(gblv.downloaded_orders_path, fle[:-4])
     eddm_order = settings.EDDMOrder()
     eddm_order.set_mailing_residential(True)
+    eddm_order.set_touch_1_maildate(fle[-18:-4])
+    eddm_order.set_touch_2_maildate()
 
     # get number of touches in the file
     with open(os.path.join(gblv.downloaded_orders_path, fle), 'r') as routes:
@@ -114,14 +127,22 @@ def process_dat(fle):
     match_search = get_order_by_date.file_to_order_match(fle, gblv, 120)
 
     if match_search[0]:
+        # Full successfull match, all counts match, match to downloaded order data
         print("Full Match: {}".format(fle))
-        print(match_search[1])
+        # print(match_search[1])
+
+        process_path = os.path.join(gblv.downloaded_orders_path, match_search[1][2])
 
         create_process_order_path(process_path)
-        shutil.copy2(os.path.join(gblv.downloaded_orders_path, fle),
-                     os.path.join(process_path, fle))
+        # Copy original file into new directory, in 'original' folder
+        copy_file_to_new_folder(gblv.downloaded_orders_path,
+                                os.path.join(process_path, 'original'),
+                                fle)
 
-        write_azzuzip_files(eddm_order, process_path, fle, match_search)
+        # Write accuzip dbf files for this job, and save copy to accuzip folder
+        write_azzuzip_files(eddm_order, process_path, fle, match_search[1])
+        # Delete the original file from the download orders path
+        os.remove(os.path.join(gblv.downloaded_orders_path, fle))
 
     else:
         # No match to file in downloaded order data
@@ -144,9 +165,7 @@ def sum_digits(n):
     return r
 
 
-def write_ini(eddm_order, fle, touch=False):
-    eddm_order.set_touch_1_maildate(fle[-14:])
-    eddm_order.set_touch_2_maildate()
+def write_ini(eddm_order, fle, mailing_date):
 
     configfile = os.path.join(gblv.accuzip_path, 'mail_dates.ini')
 
@@ -157,16 +176,10 @@ def write_ini(eddm_order, fle, touch=False):
             config.write(c)
 
     config = configparser.ConfigParser()
+    config.optionxform = str
     config.read(configfile)
-    if touch:
-        if touch == 1:
-            config.set('mailing_dates', "{0}_{1}".format(fle, touch),
-                       datetime.datetime.strftime(eddm_order.touch_1_maildate, "%m/%d/%Y"))
-        if touch == 2:
-            config.set('mailing_dates', "{0}_{1}".format(fle, touch),
-                       datetime.datetime.strftime(eddm_order.touch_2_maildate, "%m/%d/%Y"))
-    else:
-        config.set('mailing_dates', fle, datetime.datetime.strftime(eddm_order.touch_1_maildate, "%m/%d/%Y"))
+
+    config.set('mailing_dates', fle, datetime.datetime.strftime(mailing_date, "%m/%d/%Y"))
 
     with open(configfile, 'w') as c:
         config.write(c)
@@ -236,6 +249,21 @@ def create_process_order_path(process_path):
         os.mkdir(process_path)
     else:
         os.mkdir(process_path)
+
+def copy_file_to_new_folder(from_path, to_path, fle, overwrite=True):
+    # Creates this folder structure for the file, deletes old structure by default
+    if overwrite:
+        if os.path.exists(to_path):
+            shutil.rmtree(to_path)
+            os.mkdir(to_path)
+        else:
+            os.mkdir(to_path)
+    else:
+        os.mkdir(to_path)
+
+    shutil.copy2(os.path.join(from_path, fle),
+                 os.path.join(to_path, fle))
+
 
 def process_order(file):
     process_path = os.path.join(gblv.downloaded_orders_path, file[:-4])

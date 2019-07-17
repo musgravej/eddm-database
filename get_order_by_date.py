@@ -354,7 +354,7 @@ def file_to_order_match(fle, gblv, min_diff=120):
     The date of the order data and the file data are within min_diff of each other.
     """
     sql = ("SELECT count(), a.filename "
-           ", c.order_number||'-'||b.order_detail_id 'job number', "
+           ", c.order_number||'_'||b.order_detail_id 'job number', "
            "a.order_datetime_utc 'file utc', a.order_datetime_pst 'file pst', "
            "c.create_date_pst 'order pst', a.order_records 'file records', "
            "a.order_file_touches 'file touches', a.user_id 'file user id', "

@@ -50,9 +50,10 @@ class GlobalVar:
                                             '01-Web Storefront DBs', 'FB Marketing Toolkit', 'Current',
                                             'V2FBLUSERDATA.TXT'))
 
+        self.web_to_print_path = "\\\\JTSRV3\\Job Ticket Feed docs\\WebToPrint"
+
         # P:\FTPfiles\LocalUser\FB - EDDM
-        # self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm'))
-        # self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
+
         self.downloaded_orders_path = os.curdir
         self.accuzip_path = os.curdir
         self.hold_path = os.curdir
