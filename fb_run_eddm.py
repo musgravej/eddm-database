@@ -71,11 +71,11 @@ def create_database(eddm_order, fle_path, db_name, order_file):
 def write_azzuzip_files(eddm_order, fle_path, fle, match_search):
 
     # If one touch, make one file
-    if eddm_order.file_touches == 1:
+    if eddm_order.order_touches == 1:
         insert_values = {'filename': fle, 'jobname': match_search[2],
                          'processing_date': datetime.datetime.now(),
                          'order_records': eddm_order.file_qty,
-                         'total_touches': eddm_order.file_touches,
+                         'total_touches': eddm_order.order_touches,
                          'touch': 1 ,'mailing_date': eddm_order.touch_1_maildate,
                          'user_id': match_search[8]}
 
@@ -87,13 +87,13 @@ def write_azzuzip_files(eddm_order, fle_path, fle, match_search):
         write_ini(eddm_order, insert_values['jobname'], insert_values['mailing_date'])
 
     # If two touches, make two files
-    if eddm_order.file_touches == 2:
+    if eddm_order.order_touches == 2:
         for i, t in enumerate(['_1', '_2'], 1):
             insert_values = {'filename': "{0}{1}.dat".format(fle[:-4], t),
                              'jobname': "{0}_{1}".format(match_search[2], i),
                              'processing_date': datetime.datetime.now(),
                              'order_records': eddm_order.file_qty,
-                             'total_touches': eddm_order.file_touches,
+                             'total_touches': eddm_order.order_touches,
                              'touch': i,
                              'mailing_date': {1: eddm_order.touch_1_maildate, 2: eddm_order.touch_2_maildate}[i],
                              'user_id': match_search[8]}
@@ -127,9 +127,12 @@ def process_dat(fle):
     match_search = get_order_by_date.file_to_order_match(fle, gblv, 120)
 
     if match_search[0]:
-        # Full successfull match, all counts match, match to downloaded order data
+        # Successfull match, all counts match, match to downloaded order data
         print("Full Match: {}".format(fle))
-        # print(match_search[1])
+        print(match_search[1])
+
+        # Update touches to touch count in downloaded order data
+        eddm_order.order_touches = match_search[1][9]
 
         process_path = os.path.join(gblv.downloaded_orders_path, match_search[1][2])
 
@@ -275,8 +278,8 @@ if __name__ == '__main__':
     global gblv
     gblv = settings.GlobalVar()
     # Set environment to 'PRODUCTION' for production
-    gblv.set_environment('QA')
-    # gblv.set_environment('PRODUCTION')
+    # gblv.set_environment('QA')
+    gblv.set_environment('PRODUCTION')
     gblv.set_order_paths()
     gblv.set_token_name()
     gblv.set_db_name()
@@ -286,8 +289,8 @@ if __name__ == '__main__':
 
     get_order_by_date.initialise_databases(gblv)
     get_order_by_date.processing_files_table(gblv)
-    # import_userdata(gblv)
-    # download_web_orders(gblv, 15)
+    import_userdata(gblv)
+    download_web_orders(gblv, 3)
 
     # exit()
     # TODO add code here for running through hold path for orders

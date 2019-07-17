@@ -135,3 +135,14 @@ GROUP by a.filename
 ;
 
 order number is OrderDetail.order_order_number
+
+
+select b.create_date_pst, b.order_number,
+       a.order_id, a.order_detail_id,
+       a.quantity, a.finishing_options
+       , json_extract(a.finishing_options, '$.FinishingOption[0].Value') 'json'
+       ,a.pagecount
+from orderdetail a
+join orderrequestbydate b
+on a.order_id = b.order_id
+;

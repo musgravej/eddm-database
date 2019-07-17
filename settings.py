@@ -96,6 +96,7 @@ class EDDMOrder:
         # Settings from the orginal GlobalVar()
         self.mail_residential = False
         self.file_touches = 0
+        self.order_touches = 0
         self.file_qty = 0
         self.touch_1_maildate = datetime.date.today()
         self.touch_2_maildate = datetime.date.today()

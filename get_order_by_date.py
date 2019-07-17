@@ -320,14 +320,6 @@ def update_processing_file_table(fle, eddm_order, gblv):
 
 
 def update_file_history_table(gblv, **insert_values):
-    # filename = fle
-    # jobname = match_search[2]
-    # processing_date = datetime.datetime.now()
-    # order_records = eddm_order.file_qty
-    # total_touches = eddm_order.file_touches
-    # touch = 1
-    # mailing_date = eddm_order.touch_1_maildate
-    # user_id = match_search[8]
 
     sql = ("REPLACE INTO `FileHistory` VALUES ("
            "?, ?, DATE(?), ?, ?, ?, DATE(?), ?);")
@@ -349,8 +341,9 @@ def update_file_history_table(gblv, **insert_values):
 
 def file_to_order_match(fle, gblv, min_diff=120):
     """
-    Returns true if there is a hard match.  The date in the file, the number of touches,
-    the number of records all match with the order data from the API.  
+    Returns true if there is a hard match.  The date in the file,
+    the number of records all match with the order data from the API.
+    The number of touches does not need to match, but does need to be populated.  
     The date of the order data and the file data are within min_diff of each other.
     """
     sql = ("SELECT count(), a.filename "
@@ -362,7 +355,7 @@ def file_to_order_match(fle, gblv, min_diff=120):
            "abs(cast((julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
            "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
            "AND a.order_records = b.quantity JOIN OrderRequestByDate c "
-           'ON b.order_id = c.order_id WHERE "min diff" <= ? AND a.filename = ?;')
+           'ON b.order_id = c.order_id WHERE "min diff" <= ? AND a.filename = ? AND b.pagecount;')
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
@@ -383,17 +376,17 @@ def initialise_databases(gblv):
     cursor = conn.cursor()
 
     # comment out for production environment
-    # sql = "DROP TABLE IF EXISTS `OrderRequestByDate`;"
-    # cursor.execute(sql)
-    # sql = "DROP TABLE IF EXISTS `RequestHistory`;"
-    # cursor.execute(sql)
-    # sql = "DROP TABLE IF EXISTS `OrderDetail`;"
-    # cursor.execute(sql)
-    # sql = "DROP TABLE IF EXISTS `ProcessingFiles`;"
-    # cursor.execute(sql)
-    # sql = "DROP TABLE IF EXISTS `FileHistory`;"
-    # cursor.execute(sql)
-    # conn.commit()
+    sql = "DROP TABLE IF EXISTS `OrderRequestByDate`;"
+    cursor.execute(sql)
+    sql = "DROP TABLE IF EXISTS `RequestHistory`;"
+    cursor.execute(sql)
+    sql = "DROP TABLE IF EXISTS `OrderDetail`;"
+    cursor.execute(sql)
+    sql = "DROP TABLE IF EXISTS `ProcessingFiles`;"
+    cursor.execute(sql)
+    sql = "DROP TABLE IF EXISTS `FileHistory`;"
+    cursor.execute(sql)
+    conn.commit()
     # 
 
     sql = ("CREATE TABLE IF NOT EXISTS `OrderRequestByDate` ("
