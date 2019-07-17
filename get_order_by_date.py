@@ -13,11 +13,11 @@ Error during get orders as: prepare_for_mysql result = self._cmysql.convert_to_m
     Look at error message: Python type ArrayOfOrderDetailType**FinishingOption** cannot be converted
     to show which object.
 """
-def find_template_value(template_field, value):
+def find_template_value_drops(template_field):
         for elem in template_field:
             # print(elem)
             if elem['Name'] == 'Drops':
-                return elem['Value']
+                return elem['Value'][-1]
 
 
 class Supplier:
@@ -43,7 +43,7 @@ class OrderDetail:
         #     find_template_value(od['TemplateFields']['TemplateField'], 'Drops')
 
         self.groups.append({'order_id': rec,
-                            'eddm_touches': (find_template_value(od['TemplateFields']['TemplateField'], 'Drops')
+                            'eddm_touches': (find_template_value_drops(od['TemplateFields']['TemplateField'])
                                              if od['TemplateFields'] is not None else None),
                             'order_detail_id': od['ID']['_value_1'],
                             'order_type': od['OrderType'],
@@ -457,7 +457,7 @@ def initialize_databases(gblv):
     cursor.execute(sql)
 
     sql = ("CREATE TABLE IF NOT EXISTS `OrderDetail` ("
-           "`eddm_touches` INT(11) NULL,"
+           "`eddm_touches` INT(1) NULL,"
            "`order_id` INT(11) NOT NULL,"
            "`order_detail_id` INT(11) NOT NULL,"
            "`order_type` VARCHAR(50) NULL DEFAULT NULL,"
