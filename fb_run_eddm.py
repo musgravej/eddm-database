@@ -287,10 +287,10 @@ if __name__ == '__main__':
     # if not os.path.exists(os.path.join(os.curdir, gblv.db_name)):
     #     get_order_by_date.intialize_databases(gblv)
 
-    get_order_by_date.initialise_databases(gblv)
+    get_order_by_date.initialize_databases(gblv)
     get_order_by_date.processing_files_table(gblv)
-    import_userdata(gblv)
-    download_web_orders(gblv, 3)
+    # import_userdata(gblv)
+    download_web_orders(gblv, 1)
 
     # exit()
     # TODO add code here for running through hold path for orders

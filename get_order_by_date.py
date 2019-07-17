@@ -13,6 +13,12 @@ Error during get orders as: prepare_for_mysql result = self._cmysql.convert_to_m
     Look at error message: Python type ArrayOfOrderDetailType**FinishingOption** cannot be converted
     to show which object.
 """
+def find_template_value(template_field, value):
+        for elem in template_field:
+            # print(elem)
+            if elem['Name'] == 'Drops':
+                return elem['Value']
+
 
 class Supplier:
     def __init__(self):
@@ -28,11 +34,17 @@ class OrderDetail:
     def __init__(self):
         self.groups = []
 
+
     def append_to_group(self, od, rec):
         # Remove pesky non-ascii characters
         ascii_replace = re.compile(r'[^\x00-\x7F]+')
 
+        # if not isinstance(od['TemplateFields'], type(None)):
+        #     find_template_value(od['TemplateFields']['TemplateField'], 'Drops')
+
         self.groups.append({'order_id': rec,
+                            'eddm_touches': (find_template_value(od['TemplateFields']['TemplateField'], 'Drops')
+                                             if od['TemplateFields'] is not None else None),
                             'order_detail_id': od['ID']['_value_1'],
                             'order_type': od['OrderType'],
                             'user_id': od['User']['ID']['_value_1'],
@@ -370,7 +382,7 @@ def file_to_order_match(fle, gblv, min_diff=120):
     return result
 
 
-def initialise_databases(gblv):
+def initialize_databases(gblv):
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
@@ -445,6 +457,7 @@ def initialise_databases(gblv):
     cursor.execute(sql)
 
     sql = ("CREATE TABLE IF NOT EXISTS `OrderDetail` ("
+           "`eddm_touches` INT(11) NULL,"
            "`order_id` INT(11) NOT NULL,"
            "`order_detail_id` INT(11) NOT NULL,"
            "`order_type` VARCHAR(50) NULL DEFAULT NULL,"
@@ -558,14 +571,14 @@ def order_request_by_date(date_start, date_end, gbl, token, database=''):
     arg = elem(PartnerCredentials=token,
                DateRange={'Start': date_start, 'End': date_end})
 
-    print("Initialising OrderRequestByDate API connection")
+    print("Initializing OrderRequestByDate API connection")
     # creates python dict
     response = (client.service.GetOrdersByDate(arg))
     print("Returning API response")
 
-    # Initialise a commit counter
+    # Initialize a commit counter
     commit_cnt = 0
-    # Initialise processing date
+    # Initialize processing date
     process_date = ''
     # Let's keep track of all the processing dates, we'll use this later to
     # update all the FedEx tables in web_api_transactions.web_request_by_date()
