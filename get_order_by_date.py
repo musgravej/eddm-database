@@ -348,6 +348,18 @@ def update_file_history_table(gblv, **insert_values):
     conn.close()
 
 
+def status_update_processing_file_table(gblv, filename, message):
+
+    sql = ("UPDATE `ProcessingFiles` SET `staus` = ? "
+            "where `filename` = ?;")
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql, (message, filename))
+    conn.commit()
+    conn.close()
+
+
 def extended_update_processing_file_table(gblv, filename, eddm_order):
 
     sql1 = ("UPDATE `ProcessingFiles` SET `order_processed_utc` = strftime('%Y-%m-%d %H:%M:%S+00:00') "
@@ -391,6 +403,41 @@ def file_to_order_hard_match(fle, gblv, min_diff=120):
            "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
            "AND a.order_records = b.quantity JOIN OrderRequestByDate c "
            'ON b.order_id = c.order_id WHERE "min diff" <= ? AND a.filename = ?;')
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql, (min_diff, fle,))
+
+    ans = cursor.fetchone()
+    result = (ans[0] != 0, ans)
+
+    conn.commit()
+    conn.close()
+
+    return result
+
+
+def file_to_order_previous_match(fle, gblv, min_diff=120):
+    """
+    Returns true if there is a match to a previous job.  The date matches,
+    the number of does not match with the order data from the API.
+    There has been a previously existing job match.
+    The number of touches does not need to match, but does need to be populated.  
+    The date of the order data and the file data are within min_diff of each other.
+    """
+    sql = ("SELECT count(), a.filename "
+           ", c.order_number||'_'||b.order_detail_id 'job number', "
+           "a.order_datetime_utc 'file utc', a.order_datetime_pst 'file pst', "
+           "c.create_date_pst 'order pst', a.order_records 'file records', "
+           "a.order_file_touches 'file touches', a.user_id 'file user id', "
+           "b.eddm_touches 'order touches', "
+           "abs(cast((julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
+           ", b.quantity 'order qty'"
+           "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
+           "JOIN OrderRequestByDate c ON b.order_id = c.order_id "
+           'WHERE "min diff" <= ? '
+           "AND c.order_number||'_'||b.order_detail_id IN (SELECT substr(jobname, 1, 17) from FileHistory) "
+           "AND a.filename = ?;")
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
@@ -456,6 +503,8 @@ def initialize_databases(gblv):
     cursor.execute(sql)
     sql = "DROP TABLE IF EXISTS `FileHistory`;"
     cursor.execute(sql)
+    sql = "DROP TABLE IF EXISTS `ProcessingFilesHistory`;"
+    cursor.execute(sql)
     conn.commit()
     # 
 
@@ -492,6 +541,22 @@ def initialize_databases(gblv):
 
     # table of currently processing files
     sql = ("CREATE TABLE IF NOT EXISTS `ProcessingFiles` ("
+           "`filename` VARCHAR(100) NOT NULL,"
+           "`jobname` VARCHAR(100) NULL DEFAULT NULL,"
+           "`order_datetime_utc` DATETIME NULL DEFAULT NULL,"
+           "`order_datetime_pst` DATETIME NULL DEFAULT NULL,"
+           "`order_processed_utc` DATETIME NULL DEFAULT NULL,"
+           "`order_records` INT(8) NULL DEFAULT NULL,"
+           "`order_file_touches` INT(1) NULL DEFAULT NULL,"
+           "`marcom_records` INT(8) NULL DEFAULT NULL,"
+           "`marcom_order_touches` INT(1) NULL DEFAULT NULL,"
+           "`staus` VARCHAR(100) NULL DEFAULT NULL,"
+           "`user_id` VARCHAR(50) NULL DEFAULT NULL,"
+           "PRIMARY KEY (`filename`));")
+    cursor.execute(sql)
+
+    # table of history of processing files
+    sql = ("CREATE TABLE IF NOT EXISTS `ProcessingFilesHistory` ("
            "`filename` VARCHAR(100) NOT NULL,"
            "`jobname` VARCHAR(100) DEFAULT NULL,"
            "`order_datetime_utc` DATETIME NULL DEFAULT NULL,"

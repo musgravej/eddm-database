@@ -55,9 +55,13 @@ class GlobalVar:
         # P:\FTPfiles\LocalUser\FB - EDDM
 
         self.downloaded_orders_path = os.curdir
+        self.save_orders_path = os.curdir
         self.accuzip_path = os.curdir
         self.hold_path = os.curdir
         self.reset_routes_path = os.curdir
+        self.duplicate_orders_path = os.curdir
+        self.hold_orders_path = os.curdir
+        self.no_match_orders_path = os.curdir
 
     def create_accuzip_dir(self):
         if not os.path.exists(self.accuzip_path):
@@ -69,12 +73,20 @@ class GlobalVar:
             self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
             self.hold_path = os.path.join(self.downloaded_orders_path, 'hold')
             self.reset_routes_path = os.path.join(self.downloaded_orders_path, 'reset_routes')
+            self.save_orders_path = os.path.join(self.downloaded_orders_path, 'completed_orders')
+            self.hold_orders_path = os.path.join(self.downloaded_orders_path, 'hold_orders')
+            self.duplicate_orders_path = os.path.join(self.hold_orders_path, 'duplicate_orders')
+            self.no_match_orders_path = os.path.join(self.hold_orders_path, 'no_order_match')
             self.create_accuzip_dir()
         else:
             self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm', 'test'))
             self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
             self.hold_path = os.path.join(self.downloaded_orders_path, 'hold')
             self.reset_routes_path = os.path.join(self.downloaded_orders_path, 'reset_routes')
+            self.save_orders_path = os.path.join(self.downloaded_orders_path, 'completed_orders')
+            self.hold_orders_path = os.path.join(self.downloaded_orders_path, 'hold_orders')
+            self.duplicate_orders_path = os.path.join(self.hold_orders_path, 'duplicate_orders')
+            self.no_match_orders_path = os.path.join(self.hold_orders_path, 'no_order_match')
             self.create_accuzip_dir()
 
     def set_environment(self, env):

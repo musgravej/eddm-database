@@ -18,7 +18,7 @@ This script will process FB EDDM lists downloaded from eddm order portal
 # TODO Add function that will open the production pdf and check the touch counts
 
 
-def create_database(eddm_order, fle_path, db_name, order_file):
+def create_database(eddm_order, fle_path, db_name, order_file, copy_to_accuzip=True):
     """
     Writes the eddm job db file used by accuzip
     Saves a copy in the the job job folder, and saves a copy to the accuzip folder
@@ -64,11 +64,12 @@ def create_database(eddm_order, fle_path, db_name, order_file):
     db.close()
     db_counts.close()
 
-    shutil.copy(os.path.join(fle_path, "{}.dbf".format(db_name)),
-                os.path.join(gblv.accuzip_path, "{}.dbf".format(db_name)))
+    if copy_to_accuzip:
+      shutil.copy(os.path.join(fle_path, "{}.dbf".format(db_name)),
+                  os.path.join(gblv.accuzip_path, "{}.dbf".format(db_name)))
 
 
-def write_azzuzip_files(eddm_order, fle_path, fle, match_search):
+def write_azzuzip_files(eddm_order, fle_path, fle, match_search, copy_to_accuzip=True):
 
     # If one touch, make one file
     if eddm_order.order_touches == 1:
@@ -79,8 +80,8 @@ def write_azzuzip_files(eddm_order, fle_path, fle, match_search):
                          'touch': 1 ,'mailing_date': eddm_order.touch_1_maildate,
                          'user_id': match_search[8]}
 
-        # Write eddm order db file
-        create_database(eddm_order, fle_path, insert_values['jobname'], fle)
+        # Write eddm order db file, copy to accuzip folder
+        create_database(eddm_order, fle_path, insert_values['jobname'], fle, copy_to_accuzip)
         # Insert order into FileHistory table
         get_order_by_date.update_file_history_table(gblv, **insert_values)
         # Update ini file in accuzip folder
@@ -98,8 +99,8 @@ def write_azzuzip_files(eddm_order, fle_path, fle, match_search):
                              'mailing_date': {1: eddm_order.touch_1_maildate, 2: eddm_order.touch_2_maildate}[i],
                              'user_id': match_search[8]}
 
-            # Write eddm order db file
-            create_database(eddm_order, fle_path, insert_values['jobname'], fle)
+            # Write eddm order db file, copy to accuzip folder
+            create_database(eddm_order, fle_path, insert_values['jobname'], fle, copy_to_accuzip)
             # Insert order into FileHistory table
             get_order_by_date.update_file_history_table(gblv, **insert_values)
             # Update ini file in accuzip folder
@@ -143,9 +144,10 @@ def process_dat(fle):
         if match_search[1][6] != match_search[1][11]:
             eddm_order.processing_messages['count_match'] = False
 
-        process_path = os.path.join(gblv.downloaded_orders_path, match_search[1][2])
+        # process_path = os.path.join(gblv.downloaded_orders_path, match_search[1][2])
+        process_path = os.path.join(gblv.save_orders_path, match_search[1][2])
 
-        create_process_order_path(process_path)
+        create_directory_path(process_path)
         # Copy original file into new directory, in 'original' folder
         copy_file_to_new_folder(gblv.downloaded_orders_path,
                                 os.path.join(process_path, 'original'),
@@ -155,48 +157,66 @@ def process_dat(fle):
         write_azzuzip_files(eddm_order, process_path, fle, match_search[1])
         # update processing files table, set processing date
         get_order_by_date.extended_update_processing_file_table(gblv, fle, eddm_order)
+        get_order_by_date.status_update_processing_file_table(gblv, fle, "Hard match, order processed")
         # Delete the original file from the download orders path
         # os.remove(os.path.join(gblv.downloaded_orders_path, fle))
 
-    else:
+    elif get_order_by_date.file_to_order_soft_match(fle, gblv, 120)[0]:
+        # Soft match, mail counts don't match, touch count may not match
         match_search = get_order_by_date.file_to_order_soft_match(fle, gblv, 120)
-        if match_search[0]:
 
-            # Soft match, mail counts don't match, touch count may not match
-            print("Soft Match: {}".format(fle))
-            print(match_search[1])
+        print("Soft Match: {}".format(fle))
+        print(match_search[1])
 
-            # Update touches to touch count in downloaded order data
-            eddm_order.order_touches = match_search[1][9]
-            eddm_order.order_qty = match_search[1][11]
-            eddm_order.jobname = match_search[1][2]
+        # Update touches to touch count in downloaded order data
+        eddm_order.order_touches = match_search[1][9]
+        eddm_order.order_qty = match_search[1][11]
+        eddm_order.jobname = match_search[1][2]
 
-            # Log any non-matches
-            if match_search[1][7] != match_search[1][9]:
-                eddm_order.processing_messages['touch_match'] = False
+        # Log any non-matches
+        if match_search[1][7] != match_search[1][9]:
+            eddm_order.processing_messages['touch_match'] = False
 
-            if match_search[1][6] != match_search[1][11]:
-                eddm_order.processing_messages['count_match'] = False
+        if match_search[1][6] != match_search[1][11]:
+            eddm_order.processing_messages['count_match'] = False
 
-            process_path = os.path.join(gblv.downloaded_orders_path, match_search[1][2])
+        # process_path = os.path.join(gblv.downloaded_orders_path, match_search[1][2])
+        process_path = os.path.join(gblv.hold_orders_path, match_search[1][2])
 
-            create_process_order_path(process_path)
-            # Copy original file into new directory, in 'original' folder
-            copy_file_to_new_folder(gblv.downloaded_orders_path,
-                                    os.path.join(process_path, 'original'),
-                                    fle)
+        create_directory_path(process_path)
+        # Copy original file into new directory, in 'original' folder
+        copy_file_to_new_folder(gblv.downloaded_orders_path,
+                                os.path.join(process_path, 'original'),
+                                fle)
 
-            # Write accuzip dbf files for this job, and save copy to accuzip folder
-            write_azzuzip_files(eddm_order, process_path, fle, match_search[1])
-            # update processing files table, set processing date
-            get_order_by_date.extended_update_processing_file_table(gblv, fle, eddm_order)
-            # Delete the original file from the download orders path
-            # os.remove(os.path.join(gblv.downloaded_orders_path, fle))
+        # Write accuzip dbf files for this job, and save copy to accuzip folder
+        write_azzuzip_files(eddm_order, process_path, fle, match_search[1], False)
+        # update processing files table, set processing date
+        get_order_by_date.extended_update_processing_file_table(gblv, fle, eddm_order)
+        get_order_by_date.status_update_processing_file_table(gblv, fle, "Soft match, moved to hold")
+        # Delete the original file from the download orders path
+        # os.remove(os.path.join(gblv.downloaded_orders_path, fle))
 
-        else:
-            # No match, move to errror
-            # TODO Move files and log errors
-            pass
+    elif get_order_by_date.file_to_order_previous_match(fle, gblv, 120)[0]:
+        print("Match to previous order: {}".format(fle))
+        get_order_by_date.status_update_processing_file_table(gblv, fle, "Soft match to previous job, moved to hold")
+        create_directory_path(gblv.duplicate_orders_path)
+        copy_file_to_new_folder(gblv.downloaded_orders_path,
+                                os.path.join(gblv.duplicate_orders_path),
+                                fle)
+
+    else:
+        # No match, move to errror
+        # TODO Move files and log errors
+        # TODO Copy processing files table to new table
+        # TODO create log file path, append to, include date
+        # TODO create report of upcoming orders, check for active users
+        # TODO vblusertable add updated date field
+        get_order_by_date.status_update_processing_file_table(gblv, fle, "NO MATCH TO MARCOM ORDER")
+        create_directory_path(gblv.duplicate_orders_path)
+        copy_file_to_new_folder(gblv.downloaded_orders_path,
+                                os.path.join(gblv.no_match_orders_path),
+                                fle)
 
 
 def zip_ckd(zipcode):
@@ -291,13 +311,13 @@ def download_web_orders(gblv, back_days):
     get_order_by_date.clean_unused_orders(gblv, gblv.token)
 
 
-def create_process_order_path(process_path):
+def create_directory_path(process_path):
     # Creates this folder structure for the file
     if os.path.exists(process_path):
         shutil.rmtree(process_path)
-        os.mkdir(process_path)
+        os.makedirs(process_path)
     else:
-        os.mkdir(process_path)
+        os.makedirs(process_path)
 
 def copy_file_to_new_folder(from_path, to_path, fle, overwrite=True):
     # Creates this folder structure for the file, deletes old structure by default
@@ -316,8 +336,19 @@ def copy_file_to_new_folder(from_path, to_path, fle, overwrite=True):
 
 def process_order(file):
     process_path = os.path.join(gblv.downloaded_orders_path, file[:-4])
-    create_process_order_path(process_path)
+    create_directory_path(process_path)
     process_dat(file)
+
+
+def date_ordered_file_list():
+    orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
+    dic = {}
+    for order in orders:
+        dic[order[:-4].split("_")[1]] = order
+
+    sorted_dic = sorted(dic.items(), key=lambda kv: datetime.datetime.strptime(kv[0], "%Y%m%d%H%M%S"), reverse=True)
+
+    return [v for k, v in sorted_dic]
 
 
 if __name__ == '__main__':
@@ -341,6 +372,6 @@ if __name__ == '__main__':
     # exit()
     # TODO add code here for running through hold path for orders
 
-    orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
-    for order in orders:
+    # orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
+    for order in date_ordered_file_list():
         process_dat(order)

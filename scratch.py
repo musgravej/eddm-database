@@ -1,4 +1,7 @@
+import operator
+import collections
 import datetime
+import os
 import usps_api
 
 def touch_2_maildate(file_date):
@@ -32,25 +35,31 @@ def usps_list_check(ziplist):
 
 if __name__ == '__main__':
 
-    date_end = datetime.datetime.today()
-    date_start = date_end - datetime.timedelta(days=1)
-    print(date_start, date_end)
+    orders = [f for f in os.listdir(os.path.join(os.curdir, 'fb-eddm', 'production')) if f[-3:].upper() == 'DAT']
+    dic = {}
+    for order in orders:
+        dic[order[:-4].split("_")[1]] = order
 
-    # ziplist = [55559, 55560, 55561, 55562, 55563, 55564,
-    #            55565, 55566, 55567, 55568, 55569, 55570,
-    #            55571, 55572, 55573, 55574, 55575, 55576,
-    #            55577, 55578, 55473, 55474, 55478, 55479,
-    #            55480, 55483, 55484, 55485, 55486, 55487,
-    #            55488, 55550, 55551, 55552, 55553, 55554,
-    #            55555, 55556, 55557, 55558, 55579, 55580,
-    #            55581, 55582, 55583, 55584, 55585, 55586,
-    #            55587, 55588, 55589, 55590, 55591, 55592,
-    #            55593, 55594, 55595, 55596, 55597, 55598]
+    print(dic)
+
+    # sorted_dic = sorted(dic.items(), key=lambda kv: kv[0])
+    sorted_dic = sorted(dic.items(), key=lambda kv: datetime.datetime.strptime(kv[0], "%Y%m%d%H%M%S"))
+
+    files = [v for k, v in sorted_dic]
+    for f in files:
+        print(f)
+
+    # sorted_dic = sorted(dic, key=operator.itemgetter('name'))
+    # print(sorted_dic)
+
+    # sorted_dic = collections.OrderedDict(dic)
+    # print(sorted_dic)
     #
-    # usps_api.print_zip_search_results(ziplist)
+    # for v in sorted_dic:
+    #     print(v)
 
-    # mail_1 = touch_1_maildate('20190628210634')
-    # mail_2 = touch_2_maildate(mail_1)
+    # for key, value in collections.OrderedDict(dic):
+    #     print(key, value)
 
-    # print("steven_morrissey_20190626170922.dat"[-18:-4])
+
 
