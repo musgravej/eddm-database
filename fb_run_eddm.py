@@ -212,6 +212,7 @@ def process_dat(fle):
         # TODO create log file path, append to, include date
         # TODO create report of upcoming orders, check for active users
         # TODO vblusertable add updated date field
+        # TODO hard match check for previous jobname match in query
         get_order_by_date.status_update_processing_file_table(gblv, fle, "NO MATCH TO MARCOM ORDER")
         create_directory_path(gblv.duplicate_orders_path)
         copy_file_to_new_folder(gblv.downloaded_orders_path,
