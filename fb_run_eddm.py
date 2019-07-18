@@ -124,7 +124,7 @@ def process_dat(fle):
         eddm_order.file_qty = running_cnt
 
     get_order_by_date.update_processing_file_table(fle, eddm_order, gblv)
-    match_search = get_order_by_date.file_to_order_match(fle, gblv, 120)
+    match_search = get_order_by_date.file_to_order_hard_match(fle, gblv, 120)
 
     if match_search[0]:
         # Successfull match, all counts match, match to downloaded order data
@@ -133,6 +133,15 @@ def process_dat(fle):
 
         # Update touches to touch count in downloaded order data
         eddm_order.order_touches = match_search[1][9]
+        eddm_order.order_qty = match_search[1][11]
+        eddm_order.jobname = match_search[1][2]
+
+        # Log any non-matches
+        if match_search[1][7] != match_search[1][9]:
+            eddm_order.processing_messages['touch_match'] = False
+
+        if match_search[1][6] != match_search[1][11]:
+            eddm_order.processing_messages['count_match'] = False
 
         process_path = os.path.join(gblv.downloaded_orders_path, match_search[1][2])
 
@@ -144,13 +153,50 @@ def process_dat(fle):
 
         # Write accuzip dbf files for this job, and save copy to accuzip folder
         write_azzuzip_files(eddm_order, process_path, fle, match_search[1])
+        # update processing files table, set processing date
+        get_order_by_date.extended_update_processing_file_table(gblv, fle, eddm_order)
         # Delete the original file from the download orders path
-        os.remove(os.path.join(gblv.downloaded_orders_path, fle))
+        # os.remove(os.path.join(gblv.downloaded_orders_path, fle))
 
     else:
-        # No match to file in downloaded order data
-        # TODO Move files and log errors
-        pass
+        match_search = get_order_by_date.file_to_order_soft_match(fle, gblv, 120)
+        if match_search[0]:
+
+            # Soft match, mail counts don't match, touch count may not match
+            print("Soft Match: {}".format(fle))
+            print(match_search[1])
+
+            # Update touches to touch count in downloaded order data
+            eddm_order.order_touches = match_search[1][9]
+            eddm_order.order_qty = match_search[1][11]
+            eddm_order.jobname = match_search[1][2]
+
+            # Log any non-matches
+            if match_search[1][7] != match_search[1][9]:
+                eddm_order.processing_messages['touch_match'] = False
+
+            if match_search[1][6] != match_search[1][11]:
+                eddm_order.processing_messages['count_match'] = False
+
+            process_path = os.path.join(gblv.downloaded_orders_path, match_search[1][2])
+
+            create_process_order_path(process_path)
+            # Copy original file into new directory, in 'original' folder
+            copy_file_to_new_folder(gblv.downloaded_orders_path,
+                                    os.path.join(process_path, 'original'),
+                                    fle)
+
+            # Write accuzip dbf files for this job, and save copy to accuzip folder
+            write_azzuzip_files(eddm_order, process_path, fle, match_search[1])
+            # update processing files table, set processing date
+            get_order_by_date.extended_update_processing_file_table(gblv, fle, eddm_order)
+            # Delete the original file from the download orders path
+            # os.remove(os.path.join(gblv.downloaded_orders_path, fle))
+
+        else:
+            # No match, move to errror
+            # TODO Move files and log errors
+            pass
 
 
 def zip_ckd(zipcode):
@@ -290,7 +336,7 @@ if __name__ == '__main__':
     get_order_by_date.initialize_databases(gblv)
     get_order_by_date.processing_files_table(gblv)
     # import_userdata(gblv)
-    download_web_orders(gblv, 1)
+    download_web_orders(gblv, 5)
 
     # exit()
     # TODO add code here for running through hold path for orders
@@ -298,4 +344,3 @@ if __name__ == '__main__':
     orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
     for order in orders:
         process_dat(order)
-        # os.remove(os.path.join(gblv.downloaded_orders_path, order))

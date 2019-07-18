@@ -308,9 +308,6 @@ def processing_files_table(gblv):
         order_datetime_utc = order_datetime_utc.replace(tzinfo=pytz.utc)
         order_datetime_pst = order_datetime_utc.astimezone(pytz.timezone('America/Los_Angeles'))
 
-        # print(order, order_datetime_utc.strftime("%Y-%m-%d %H:%M:%S %Z%z"),
-        #       order_datetime_pst.strftime("%Y-%m-%d %H:%M:%S %Z%z"))
-
         cursor.execute(sql, (order, order_datetime_utc, order_datetime_pst, userid))
 
     conn.commit()
@@ -351,7 +348,32 @@ def update_file_history_table(gblv, **insert_values):
     conn.close()
 
 
-def file_to_order_match(fle, gblv, min_diff=120):
+def extended_update_processing_file_table(gblv, filename, eddm_order):
+
+    sql1 = ("UPDATE `ProcessingFiles` SET `order_processed_utc` = strftime('%Y-%m-%d %H:%M:%S+00:00') "
+            "where `filename` = ?;")
+
+    sql2 = ("UPDATE `ProcessingFiles` SET `marcom_records` = ? "
+            "where `filename` = ?;")
+
+    sql3 = ("UPDATE `ProcessingFiles` SET `marcom_order_touches` = ? "
+            "where `filename` = ?;")
+
+    sql4 = ("UPDATE `ProcessingFiles` SET `jobname` = ? "
+            "where `filename` = ?;")
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql1, (filename,))
+    cursor.execute(sql2, (eddm_order.order_qty, filename,))
+    cursor.execute(sql3, (eddm_order.order_touches, filename,))
+    cursor.execute(sql4, (eddm_order.jobname, filename,))
+
+    conn.commit()
+    conn.close()
+
+
+def file_to_order_hard_match(fle, gblv, min_diff=120):
     """
     Returns true if there is a hard match.  The date in the file,
     the number of records all match with the order data from the API.
@@ -363,11 +385,47 @@ def file_to_order_match(fle, gblv, min_diff=120):
            "a.order_datetime_utc 'file utc', a.order_datetime_pst 'file pst', "
            "c.create_date_pst 'order pst', a.order_records 'file records', "
            "a.order_file_touches 'file touches', a.user_id 'file user id', "
-           "(b.pagecount / 2) 'order touches', "
+           "b.eddm_touches 'order touches', "
            "abs(cast((julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
+           ", b.quantity 'order qty'"
            "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
            "AND a.order_records = b.quantity JOIN OrderRequestByDate c "
-           'ON b.order_id = c.order_id WHERE "min diff" <= ? AND a.filename = ? AND b.pagecount;')
+           'ON b.order_id = c.order_id WHERE "min diff" <= ? AND a.filename = ?;')
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql, (min_diff, fle,))
+
+    ans = cursor.fetchone()
+    result = (ans[0] != 0, ans)
+
+    conn.commit()
+    conn.close()
+
+    return result
+
+
+def file_to_order_soft_match(fle, gblv, min_diff=120):
+    """
+    Returns true if there is a soft match.  The date in the matches,
+    the number of does not match with the order data from the API.
+    There can not be a previously existing job match.
+    The number of touches does not need to match, but does need to be populated.  
+    The date of the order data and the file data are within min_diff of each other.
+    """
+    sql = ("SELECT count(), a.filename "
+           ", c.order_number||'_'||b.order_detail_id 'job number', "
+           "a.order_datetime_utc 'file utc', a.order_datetime_pst 'file pst', "
+           "c.create_date_pst 'order pst', a.order_records 'file records', "
+           "a.order_file_touches 'file touches', a.user_id 'file user id', "
+           "b.eddm_touches 'order touches', "
+           "abs(cast((julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
+           ", b.quantity 'order qty'"
+           "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
+           "JOIN OrderRequestByDate c ON b.order_id = c.order_id "
+           'WHERE "min diff" <= ? '
+           "AND c.order_number||'_'||b.order_detail_id NOT IN (SELECT substr(jobname, 1, 17) from FileHistory) "
+           "AND a.filename = ?;")
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
@@ -435,10 +493,14 @@ def initialize_databases(gblv):
     # table of currently processing files
     sql = ("CREATE TABLE IF NOT EXISTS `ProcessingFiles` ("
            "`filename` VARCHAR(100) NOT NULL,"
+           "`jobname` VARCHAR(100) DEFAULT NULL,"
            "`order_datetime_utc` DATETIME NULL DEFAULT NULL,"
            "`order_datetime_pst` DATETIME NULL DEFAULT NULL,"
+           "`order_processed_utc` DATETIME NULL DEFAULT NULL,"
            "`order_records` INT(8) NULL DEFAULT NULL,"
            "`order_file_touches` INT(1) NULL DEFAULT NULL,"
+           "`marcom_records` INT(8) NULL DEFAULT NULL,"
+           "`marcom_order_touches` INT(1) NULL DEFAULT NULL,"
            "`user_id` VARCHAR(50) NULL DEFAULT NULL,"
            "PRIMARY KEY (`filename`));")
     cursor.execute(sql)

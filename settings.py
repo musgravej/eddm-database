@@ -98,8 +98,13 @@ class EDDMOrder:
         self.file_touches = 0
         self.order_touches = 0
         self.file_qty = 0
+        self.order_qty = 0
         self.touch_1_maildate = datetime.date.today()
         self.touch_2_maildate = datetime.date.today()
+        self.jobname = ''
+        self.processing_messages = {'count_match': True,
+                                    'touch_match': True,
+                                    'date_match': True}
 
         self.dat_header = ["AgentID", "DateSelected", "City", "State",
                            "ZipCode", "RouteID", "Quantity", "POS",
