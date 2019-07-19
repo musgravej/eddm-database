@@ -15,8 +15,6 @@ import sqlite3
 """
 This script will process FB EDDM lists downloaded from eddm order portal
 """
-# TODO Add function that will open the production pdf and check the touch counts
-
 
 def create_database(eddm_order, fle_path, db_name, order_file, copy_to_accuzip=True):
     """
@@ -65,8 +63,9 @@ def create_database(eddm_order, fle_path, db_name, order_file, copy_to_accuzip=T
     db_counts.close()
 
     if copy_to_accuzip:
-      shutil.copy(os.path.join(fle_path, "{}.dbf".format(db_name)),
-                  os.path.join(gblv.accuzip_path, "{}.dbf".format(db_name)))
+        print("moving to accuzip folder: {}".format(db_name))
+        shutil.copy(os.path.join(fle_path, "{}.dbf".format(db_name)),
+                    os.path.join(gblv.accuzip_path, "{}.dbf".format(db_name)))
 
 
 def write_azzuzip_files(eddm_order, fle_path, fle, match_search, copy_to_accuzip=True):
@@ -161,6 +160,16 @@ def process_dat(fle):
         # Delete the original file from the download orders path
         # os.remove(os.path.join(gblv.downloaded_orders_path, fle))
 
+    elif get_order_by_date.file_to_order_hard_previous_match(fle, gblv, 120)[0]:
+        # Hard match, matches to previous order
+        print("Hard match to previous order: {}".format(fle))
+        get_order_by_date.status_update_processing_file_table(gblv, fle,
+                                                              "Hard match to previous job, moved to duplicate")
+        create_directory_path(gblv.duplicate_orders_path)
+        copy_file_to_new_folder(gblv.downloaded_orders_path,
+                                os.path.join(gblv.duplicate_orders_path),
+                                fle)
+
     elif get_order_by_date.file_to_order_soft_match(fle, gblv, 120)[0]:
         # Soft match, mail counts don't match, touch count may not match
         match_search = get_order_by_date.file_to_order_soft_match(fle, gblv, 120)
@@ -198,11 +207,12 @@ def process_dat(fle):
         # os.remove(os.path.join(gblv.downloaded_orders_path, fle))
 
     elif get_order_by_date.file_to_order_previous_match(fle, gblv, 120)[0]:
+        # Soft match, mail counts don't match, touch count may not match, matches to previous order
         print("Match to previous order: {}".format(fle))
         get_order_by_date.status_update_processing_file_table(gblv, fle, "Soft match to previous job, moved to hold")
         create_directory_path(gblv.duplicate_orders_path)
         copy_file_to_new_folder(gblv.downloaded_orders_path,
-                                os.path.join(gblv.duplicate_orders_path),
+                                gblv.duplicate_orders_path,
                                 fle)
 
     else:
@@ -212,11 +222,10 @@ def process_dat(fle):
         # TODO create log file path, append to, include date
         # TODO create report of upcoming orders, check for active users
         # TODO vblusertable add updated date field
-        # TODO hard match check for previous jobname match in query
         get_order_by_date.status_update_processing_file_table(gblv, fle, "NO MATCH TO MARCOM ORDER")
-        create_directory_path(gblv.duplicate_orders_path)
+        create_directory_path(gblv.no_match_orders_path)
         copy_file_to_new_folder(gblv.downloaded_orders_path,
-                                os.path.join(gblv.no_match_orders_path),
+                                gblv.no_match_orders_path,
                                 fle)
 
 
@@ -292,13 +301,10 @@ def import_userdata(gblv):
 def download_web_orders(gblv, back_days):
 
     # year = 2019
-    #
     # month_start = 7
     # day_start = 1
-    #
     # month_end = 7
     # day_end = 8
-    #
     # date_start = (datetime.datetime.strptime("{y}-{m}-{d} 00:00:00".format(
     #               m=month_start,y=year,d=str(day_start).zfill(2)),"%Y-%m-%d %H:%M:%S"))
 
@@ -312,16 +318,21 @@ def download_web_orders(gblv, back_days):
     get_order_by_date.clean_unused_orders(gblv, gblv.token)
 
 
-def create_directory_path(process_path):
+def create_directory_path(process_path, overwrite=False):
     # Creates this folder structure for the file
-    if os.path.exists(process_path):
-        shutil.rmtree(process_path)
-        os.makedirs(process_path)
+    if overwrite:
+        if os.path.exists(process_path):
+            shutil.rmtree(process_path)
+            os.makedirs(process_path)
+        else:
+            os.makedirs(process_path)
     else:
-        os.makedirs(process_path)
+        if not os.path.exists(process_path):
+            os.makedirs(process_path)
 
-def copy_file_to_new_folder(from_path, to_path, fle, overwrite=True):
-    # Creates this folder structure for the file, deletes old structure by default
+
+def copy_file_to_new_folder(from_path, to_path, fle, overwrite=False):
+    # Creates this folder structure for the file, does not overwrite by default
     if overwrite:
         if os.path.exists(to_path):
             shutil.rmtree(to_path)
@@ -329,7 +340,8 @@ def copy_file_to_new_folder(from_path, to_path, fle, overwrite=True):
         else:
             os.mkdir(to_path)
     else:
-        os.mkdir(to_path)
+        if not os.path.exists(to_path):
+            os.mkdir(to_path)
 
     shutil.copy2(os.path.join(from_path, fle),
                  os.path.join(to_path, fle))
@@ -361,18 +373,15 @@ if __name__ == '__main__':
     gblv.set_order_paths()
     gblv.set_token_name()
     gblv.set_db_name()
-
-    # if not os.path.exists(os.path.join(os.curdir, gblv.db_name)):
-    #     get_order_by_date.intialize_databases(gblv)
+    get_order_by_date.clear_file_history_table(gblv)
 
     get_order_by_date.initialize_databases(gblv)
-    get_order_by_date.processing_files_table(gblv)
-    # import_userdata(gblv)
+    import_userdata(gblv)
     download_web_orders(gblv, 5)
 
-    # exit()
-    # TODO add code here for running through hold path for orders
-
-    # orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
-    for order in date_ordered_file_list():
+    # TODO add code here for running through hold path/no match orders for orders
+    orders = date_ordered_file_list()
+    # Create table of orders to process
+    get_order_by_date.processing_files_table(gblv, orders)
+    for order in orders:
         process_dat(order)

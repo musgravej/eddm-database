@@ -286,7 +286,7 @@ class Record(dict):
         self['fetch_date'] = fetch_date
 
 
-def processing_files_table(gblv):
+def processing_files_table(gblv, orders):
     print("Creating processing file table")
 
     conn = sqlite3.connect(gblv.db_name)
@@ -295,7 +295,7 @@ def processing_files_table(gblv):
     cursor.execute("DELETE FROM `ProcessingFiles`;")
     conn.commit()
 
-    orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
+    # orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
 
     for order in orders:
         sql = ("INSERT INTO `ProcessingFiles` (filename, order_datetime_utc, order_datetime_pst,"
@@ -324,6 +324,15 @@ def update_processing_file_table(fle, eddm_order, gblv):
     cursor.execute(sql1, (eddm_order.file_qty, fle,))
     cursor.execute(sql2, (eddm_order.file_touches, fle,))
 
+    conn.commit()
+    conn.close()
+
+
+def clear_file_history_table(gblv):
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    sql = "DELETE FROM FileHistory WHERE `filename` IS NOT null;"
+    cursor.execute(sql)
     conn.commit()
     conn.close()
 
@@ -398,11 +407,45 @@ def file_to_order_hard_match(fle, gblv, min_diff=120):
            "c.create_date_pst 'order pst', a.order_records 'file records', "
            "a.order_file_touches 'file touches', a.user_id 'file user id', "
            "b.eddm_touches 'order touches', "
-           "abs(cast((julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
+           "abs(cast((julianday(a.order_datetime_pst) - "
+           "julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
            ", b.quantity 'order qty'"
            "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
-           "AND a.order_records = b.quantity JOIN OrderRequestByDate c "
-           'ON b.order_id = c.order_id WHERE "min diff" <= ? AND a.filename = ?;')
+           "AND a.order_records = b.quantity "
+           "JOIN OrderRequestByDate c ON b.order_id = c.order_id "
+           'WHERE "min diff" <= ? '
+           "AND c.order_number||'_'||b.order_detail_id NOT IN (SELECT substr(jobname, 1, 17) from FileHistory) "
+           "AND a.filename = ?;")
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql, (min_diff, fle,))
+
+    ans = cursor.fetchone()
+    result = (ans[0] != 0, ans)
+
+    conn.commit()
+    conn.close()
+
+    return result
+
+
+def file_to_order_hard_previous_match(fle, gblv, min_diff=120):
+    """
+    Returns true if there is a hard match.  The date in the file,
+    the number of records all match with the order data from the API.
+    The number of touches does not need to match, but does need to be populated.
+    The date of the order data and the file data are within min_diff of each other.
+    """
+    sql = ("SELECT count(), a.filename, c.order_number||'_'||b.order_detail_id 'job number', "
+           "abs(cast((julianday(a.order_datetime_pst) - "
+           "julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
+           "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
+           "AND a.order_records = b.quantity "
+           "JOIN OrderRequestByDate c ON b.order_id = c.order_id "
+           'WHERE "min diff" <= ? '
+           "AND c.order_number||'_'||b.order_detail_id IN (SELECT substr(jobname, 1, 17) from FileHistory) "
+           "AND a.filename = ?;")
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()

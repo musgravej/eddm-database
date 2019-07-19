@@ -12,6 +12,7 @@ config.ini
 *.sublime-workspace
 !notes.txt
 usps_api.py
+/v2fbluserdata
 
 __pycache__/
 *.py[cod]

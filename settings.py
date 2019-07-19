@@ -46,9 +46,13 @@ class GlobalVar:
                          self.fb_qa_token: 'eddm_db_qa.db'
                          }
 
-        self.user_data_path = (os.path.join('\\\\JTSRV4', 'Data', 'Customer Files', 'In Progress',
-                                            '01-Web Storefront DBs', 'FB Marketing Toolkit', 'Current',
-                                            'V2FBLUSERDATA.TXT'))
+        # Work environment
+        # self.user_data_path = (os.path.join('\\\\JTSRV4', 'Data', 'Customer Files', 'In Progress',
+        #                                     '01-Web Storefront DBs', 'FB Marketing Toolkit', 'Current',
+        #                                     'V2FBLUSERDATA.TXT'))
+
+        # Home environment
+        self.user_data_path = (os.path.join(os.curdir, 'v2fbluserdata', 'V2FBLUSERDATA.TXT'))
 
         self.web_to_print_path = "\\\\JTSRV3\\Job Ticket Feed docs\\WebToPrint"
 

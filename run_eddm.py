@@ -166,7 +166,7 @@ def csv_from_counts_file(fle):
 
 
 if __name__ == '__main__':
-    # TODO Script to pick residential or simplified all routes
+    # Script to pick residential or simplified all routes
     global gblv
     gblv = GlobalVar()
     gblv.set_mailing_residential(False)
