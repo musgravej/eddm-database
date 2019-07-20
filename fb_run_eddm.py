@@ -495,7 +495,6 @@ if __name__ == '__main__':
     # download_web_orders(5)
 
     # TODO add code here for running through hold path/no match orders for orders
-    # TODO make pdf placards for production
 
     # Create a list of orders
     orders = date_ordered_file_list()
@@ -508,6 +507,6 @@ if __name__ == '__main__':
         get_order_by_date.append_filename_to_orderdetail(gblv)
         get_order_by_date.processing_table_to_history(gblv)
         write_message_log()
-        write_tag_merge()
+        # write_tag_merge()
     else:
         print("No files to process")
