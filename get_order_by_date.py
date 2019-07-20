@@ -292,7 +292,7 @@ def processing_files_table(gblv, orders):
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
 
-    cursor.execute("DELETE FROM `ProcessingFiles`;")
+    cursor.execute("DELETE FROM `ProcessingFiles` WHERE `filename` IS NOT NULL ;")
     conn.commit()
 
     # orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
@@ -373,7 +373,7 @@ def import_userdata(gblv):
 
 
 def append_filename_to_orderdetail(gblv):
-    sql = ("UPDATE OrderDetail SET file_match = "
+    sql = ("UPDATE OrderDetail SET `file_match` = "
            "(SELECT filename FROM ProcessingFiles WHERE jobname = "
            'TRIM((OrderDetail.order_order_number||"_"||OrderDetail.order_detail_id))) '
            "WHERE EXISTS (SELECT filename FROM ProcessingFiles WHERE "
@@ -465,7 +465,7 @@ def jobs_mailing_agent_status(gblv, days):
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
-    cursor.execute(sql, ((days),))
+    cursor.execute(sql, (days,))
 
     results = cursor.fetchall()
 
@@ -580,7 +580,8 @@ def file_to_order_previous_match(fle, gblv, min_diff=120):
            "c.create_date_pst 'order pst', a.order_records 'file records', "
            "a.order_file_touches 'file touches', a.user_id 'file user id', "
            "b.eddm_touches 'order touches', "
-           "abs(cast((julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
+           "abs(cast((julianday(a.order_datetime_pst) - "
+           "julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
            ", b.quantity 'order qty'"
            "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
            "JOIN OrderRequestByDate c ON b.order_id = c.order_id "
@@ -615,7 +616,8 @@ def file_to_order_soft_match(fle, gblv, min_diff=120):
            "c.create_date_pst 'order pst', a.order_records 'file records', "
            "a.order_file_touches 'file touches', a.user_id 'file user id', "
            "b.eddm_touches 'order touches', "
-           "abs(cast((julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
+           "abs(cast((julianday(a.order_datetime_pst) - "
+           "julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
            ", b.quantity 'order qty'"
            "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
            "JOIN OrderRequestByDate c ON b.order_id = c.order_id "

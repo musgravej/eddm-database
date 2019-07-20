@@ -3,7 +3,6 @@ import re
 import json
 import os
 import datetime
-import shutil
 
 """
 Home to the GlobalVar class, and other classes and functions that 
@@ -47,12 +46,12 @@ class GlobalVar:
                          }
 
         # Work environment
-        self.user_data_path = (os.path.join('\\\\JTSRV4', 'Data', 'Customer Files', 'In Progress',
-                                            '01-Web Storefront DBs', 'FB Marketing Toolkit', 'Current',
-                                            'V2FBLUSERDATA.TXT'))
+        # self.user_data_path = (os.path.join('\\\\JTSRV4', 'Data', 'Customer Files', 'In Progress',
+        #                                     '01-Web Storefront DBs', 'FB Marketing Toolkit', 'Current',
+        #                                     'V2FBLUSERDATA.TXT'))
 
         # Home environment
-        # self.user_data_path = (os.path.join(os.curdir, 'v2fbluserdata', 'V2FBLUSERDATA.TXT'))
+        self.user_data_path = (os.path.join(os.curdir, 'v2fbluserdata', 'V2FBLUSERDATA.TXT'))
 
         self.web_to_print_path = "\\\\JTSRV3\\Job Ticket Feed docs\\WebToPrint"
 
@@ -69,6 +68,7 @@ class GlobalVar:
         self.complete_processing_path = os.curdir
 
         self.log_messages = []
+        self.delete_original_files = False
 
     def create_accuzip_dir(self):
         if not os.path.exists(self.accuzip_path):

@@ -102,6 +102,8 @@ def write_azzuzip_files(eddm_order, fle_path, fle, match_search, copy_to_accuzip
 
             # Write eddm order db file, copy to accuzip folder
             create_database(eddm_order, fle_path, insert_values['jobname'], fle, copy_to_accuzip)
+            # Create pdf tags, save to job directory
+            create_job_tags(fle_path, **insert_values)
             # Insert order into FileHistory table
             get_order_by_date.update_file_history_table(gblv, **insert_values)
             # Update ini file in accuzip folder
@@ -129,7 +131,7 @@ def process_dat(fle):
     match_search = get_order_by_date.file_to_order_hard_match(fle, gblv, 120)
 
     if match_search[0]:
-        # Successfull match, all counts match, match to downloaded order data
+        # Successful match, all counts match, match to downloaded order data
         print_log("Full Match: {}".format(fle))
         # print(match_search[1])
 
@@ -160,9 +162,8 @@ def process_dat(fle):
         get_order_by_date.extended_update_processing_file_table(gblv, fle, eddm_order)
         get_order_by_date.status_update_processing_file_table(gblv, fle, "Hard match, order processed")
         # Copy file to complete_processing_files path
-        move_file_to_new_folder(gblv.downloaded_orders_path, gblv.complete_processing_path, fle)
-        # Delete the original file from the download orders path
-        os.remove(os.path.join(gblv.downloaded_orders_path, fle))
+        move_file_to_new_folder(gblv.downloaded_orders_path,
+                                gblv.complete_processing_path, fle, delete_original=gblv.delete_original_files)
 
     elif get_order_by_date.file_to_order_hard_previous_match(fle, gblv, 120)[0]:
         # Hard match, matches to previous order
@@ -211,9 +212,8 @@ def process_dat(fle):
         get_order_by_date.extended_update_processing_file_table(gblv, fle, eddm_order)
         get_order_by_date.status_update_processing_file_table(gblv, fle, "Soft match, moved to hold")
         # Copy file to complete_processing_files path
-        move_file_to_new_folder(gblv.downloaded_orders_path, gblv.complete_processing_path, fle)
-        # Delete the original file from the download orders path
-        os.remove(os.path.join(gblv.downloaded_orders_path, fle))
+        move_file_to_new_folder(gblv.downloaded_orders_path,
+                                gblv.complete_processing_path, fle, delete_original=gblv.delete_original_files)
 
     elif get_order_by_date.file_to_order_previous_match(fle, gblv, 120)[0]:
         # Soft match, mail counts don't match, touch count may not match, matches to previous order
@@ -228,7 +228,7 @@ def process_dat(fle):
                                 fle, delete_original=gblv.delete_original_files)
 
     else:
-        # No match, move to errror
+        # No match, move to error
         print_log("No match to Marcom order: {}".format(fle))
         get_order_by_date.status_update_processing_file_table(gblv, fle, "NO MATCH TO MARCOM ORDER")
         create_directory_path(gblv.no_match_orders_path)
@@ -246,17 +246,61 @@ def zip_ckd(zipcode):
 
 
 def create_job_tags(fle_path, **val):
-    pdfname = "{} JOB TAGS.pdf".format(val['jobname'])
-    pdf = fpdf.FPDF('L', 'in', 'Letter')
-    pdf.add_page()
-    pdf.set_margins(.25, 0, 0)
-    pdf.set_font('Arial', 'B', 50)
-    pdf.cell(10.5, 1.5, val['jobname'], 0, 0, 'C')
-    pdf.set_y(pdf.get_y() + 2)
-    pdf.cell(10.5, 1.5, "Mail Date: {}".format(datetime.datetime.strftime(val['mailing_date'], "%Y/%m/%d")), 0, 0, 'C')
-    pdf.set_y(pdf.get_y() + 2)
-    pdf.cell(10.5, 1.5, "Total Qty: {}".format(val['order_records']), 0, 0, 'C')
-    pdf.output(os.path.join(fle_path, pdfname), 'F')
+
+    if val['total_touches'] > 1:
+        if val['touch'] == 2:
+            pdf_name = "{} JOB TAGS.pdf".format(val['jobname'])
+            pdf = fpdf.FPDF('L', 'in', 'Letter')
+            pdf.add_page()
+            pdf.set_margins(.25, 0, 0)
+            pdf.set_font('Arial', 'B', 60)
+            pdf.cell(10.5, 1.25, val['jobname'], 0, 0, 'C')
+            pdf.set_font('Arial', 'B', 70)
+            pdf.set_y(pdf.get_y() + 1.25)
+            pdf.cell(10.5, 1.25, "Mail Date: {}".format(datetime.datetime.strftime(val['mailing_date'],
+                                                                                   "%Y/%m/%d")), 0, 0,
+                     'C')
+            pdf.set_y(pdf.get_y() + 1.25)
+            pdf.cell(10.5, 1.25, "Total Qty: {:,}".format(val['order_records']), 0, 0, 'C')
+            pdf.set_y(pdf.get_y() + 1.25)
+            pdf.cell(10.5, 1.25, "Touch {} of 2".format(val['touch']), 0, 0, 'C')
+
+            pdf.set_y(pdf.get_y() + 1.25)
+            pdf.set_font('Arial', 'B', 60)
+            pdf.cell(10.5, 1.25, "WAIT FOR APPROVAL".format(val['touch']), 0, 0, 'C')
+            pdf.set_y(pdf.get_y() + .65)
+            pdf.cell(10.5, 1.25, "BEFORE MAILING".format(val['touch']), 0, 0, 'C')
+        else:
+            pdf_name = "{} JOB TAGS.pdf".format(val['jobname'])
+            pdf = fpdf.FPDF('L', 'in', 'Letter')
+            pdf.add_page()
+            pdf.set_margins(.25, 0, 0)
+            pdf.set_font('Arial', 'B', 60)
+            pdf.cell(10.5, 1.5, val['jobname'], 0, 0, 'C')
+            pdf.set_font('Arial', 'B', 70)
+            pdf.set_y(pdf.get_y() + 2)
+            pdf.cell(10.5, 1.5, "Mail Date: {}".format(datetime.datetime.strftime(val['mailing_date'],
+                                                                                  "%Y/%m/%d")), 0, 0, 'C')
+            pdf.set_y(pdf.get_y() + 2)
+            pdf.cell(10.5, 1.5, "Total Qty: {:,}".format(val['order_records']), 0, 0, 'C')
+
+            pdf.set_y(pdf.get_y() + 1.6)
+            pdf.cell(10.5, 1.25, "Touch {} of 2".format(val['touch']), 0, 0, 'C')
+
+    else:
+        pdf_name = "{} JOB TAGS.pdf".format(val['jobname'])
+        pdf = fpdf.FPDF('L', 'in', 'Letter')
+        pdf.add_page()
+        pdf.set_margins(.25, 0, 0)
+        pdf.set_font('Arial', 'B', 70)
+        pdf.cell(10.5, 1.5, val['jobname'], 0, 0, 'C')
+        pdf.set_y(pdf.get_y() + 2)
+        pdf.cell(10.5, 1.5, "Mail Date: {}".format(datetime.datetime.strftime(val['mailing_date'], "%Y/%m/%d")), 0, 0,
+                 'C')
+        pdf.set_y(pdf.get_y() + 2)
+        pdf.cell(10.5, 1.5, "Total Qty: {:,}".format(val['order_records']), 0, 0, 'C')
+
+    pdf.output(os.path.join(fle_path, pdf_name), 'F')
 
 
 def sum_digits(n):
@@ -444,14 +488,16 @@ if __name__ == '__main__':
     gblv.set_order_paths()
     gblv.set_token_name()
     gblv.set_db_name()
-    # get_order_by_date.clear_file_history_table(gblv)
+    get_order_by_date.clear_file_history_table(gblv)
 
-    get_order_by_date.initialize_databases(gblv)
-    get_order_by_date.import_userdata(gblv)
-    download_web_orders(5)
+    # get_order_by_date.initialize_databases(gblv)
+    # get_order_by_date.import_userdata(gblv)
+    # download_web_orders(5)
 
     # TODO add code here for running through hold path/no match orders for orders
     # TODO make pdf placards for production
+
+    # Create a list of orders
     orders = date_ordered_file_list()
     # Create table of orders to process
     get_order_by_date.processing_files_table(gblv, orders)
