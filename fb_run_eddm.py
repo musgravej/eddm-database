@@ -1,21 +1,20 @@
 import dbf
 import csv
-import requests
-import xml.etree.ElementTree as ET
+# import requests
+# import xml.etree.ElementTree as ET
 import os
 import math
-import datetime
 import shutil
 import datetime
 import configparser
 import settings
 import get_order_by_date
-import sqlite3
 import fpdf
 
 """
 This script will process FB EDDM lists downloaded from eddm order portal
 """
+
 
 def create_database(eddm_order, fle_path, db_name, order_file, copy_to_accuzip=True):
     """
@@ -31,12 +30,12 @@ def create_database(eddm_order, fle_path, db_name, order_file, copy_to_accuzip=T
     full_newdb_path = os.path.join(fle_path, db_name)
 
     db = dbf.Table("{0}".format(full_newdb_path), ('FIRST C(25); ADDRESS C(1); CITY C(28); '
-                                         'ST C(2); ZIP C(10); CRRT C(4); '
-                                         'WALKSEQ_ C(7); STATUS_ C(1); '
-                                         'BARCODE C(14); X C(1)')
+                                                   'ST C(2); ZIP C(10); CRRT C(4); '
+                                                   'WALKSEQ_ C(7); STATUS_ C(1); '
+                                                   'BARCODE C(14); X C(1)')
                    )
 
-    db_counts = dbf.Table("{0} CRRT Counts".format(full_newdb_path), ('ZIP C(6); CRRT C(5); RES C(6); POS C(5)'))
+    db_counts = dbf.Table("{0} CRRT Counts".format(full_newdb_path), 'ZIP C(6); CRRT C(5); RES C(6); POS C(5)')
 
     db.open(mode=dbf.READ_WRITE)
     db_counts.open(mode=dbf.READ_WRITE)
@@ -77,7 +76,7 @@ def write_azzuzip_files(eddm_order, fle_path, fle, match_search, copy_to_accuzip
                          'processing_date': datetime.datetime.now(),
                          'order_records': eddm_order.file_qty,
                          'total_touches': eddm_order.order_touches,
-                         'touch': 1 ,'mailing_date': eddm_order.touch_1_maildate,
+                         'touch': 1, 'mailing_date': eddm_order.touch_1_maildate,
                          'user_id': match_search[8]}
 
         # Write eddm order db file, copy to accuzip folder
@@ -87,7 +86,7 @@ def write_azzuzip_files(eddm_order, fle_path, fle, match_search, copy_to_accuzip
         # Insert order into FileHistory table
         get_order_by_date.update_file_history_table(gblv, **insert_values)
         # Update ini file in accuzip folder
-        write_ini(eddm_order, insert_values['jobname'], insert_values['mailing_date'])
+        write_ini(insert_values['jobname'], insert_values['mailing_date'])
 
     # If two touches, make two files
     if eddm_order.order_touches == 2:
@@ -106,7 +105,7 @@ def write_azzuzip_files(eddm_order, fle_path, fle, match_search, copy_to_accuzip
             # Insert order into FileHistory table
             get_order_by_date.update_file_history_table(gblv, **insert_values)
             # Update ini file in accuzip folder
-            write_ini(eddm_order, insert_values['jobname'], insert_values['mailing_date'])
+            write_ini(insert_values['jobname'], insert_values['mailing_date'])
 
 
 def process_dat(fle):
@@ -176,7 +175,7 @@ def process_dat(fle):
         # Copy file to no duplicates folder, and delete from downloaded orders path
         move_file_to_new_folder(gblv.downloaded_orders_path,
                                 os.path.join(gblv.duplicate_orders_path),
-                                fle, delete_original=True)
+                                fle, delete_original=gblv.delete_original_files)
 
     elif get_order_by_date.file_to_order_soft_match(fle, gblv, 120)[0]:
         # Soft match, mail counts don't match, touch count may not match
@@ -226,7 +225,7 @@ def process_dat(fle):
         # Copy file to no duplicates folder, and delete from downloaded orders path
         move_file_to_new_folder(gblv.downloaded_orders_path,
                                 gblv.duplicate_orders_path,
-                                fle, delete_original=True)
+                                fle, delete_original=gblv.delete_original_files)
 
     else:
         # No match, move to errror
@@ -238,7 +237,7 @@ def process_dat(fle):
         # Copy file to no match folder, and delete from downloaded orders path
         move_file_to_new_folder(gblv.downloaded_orders_path,
                                 gblv.no_match_orders_path,
-                                fle, delete_original=True)
+                                fle, delete_original=gblv.delete_original_files)
 
 
 def zip_ckd(zipcode):
@@ -247,7 +246,7 @@ def zip_ckd(zipcode):
 
 
 def create_job_tags(fle_path, **val):
-    pdfname  = "{} JOB TAGS.pdf".format(val['jobname'])
+    pdfname = "{} JOB TAGS.pdf".format(val['jobname'])
     pdf = fpdf.FPDF('L', 'in', 'Letter')
     pdf.add_page()
     pdf.set_margins(.25, 0, 0)
@@ -258,7 +257,6 @@ def create_job_tags(fle_path, **val):
     pdf.set_y(pdf.get_y() + 2)
     pdf.cell(10.5, 1.5, "Total Qty: {}".format(val['order_records']), 0, 0, 'C')
     pdf.output(os.path.join(fle_path, pdfname), 'F')
-
 
 
 def sum_digits(n):
@@ -281,7 +279,7 @@ def print_log(message):
     gblv.log_messages.append(message)
 
 
-def write_ini(eddm_order, fle, mailing_date):
+def write_ini(fle, mailing_date):
 
     configfile = os.path.join(gblv.accuzip_path, 'mail_dates.ini')
 
@@ -301,7 +299,7 @@ def write_ini(eddm_order, fle, mailing_date):
         config.write(c)
 
 
-def download_web_orders(gblv, back_days):
+def download_web_orders(back_days):
 
     # year = 2019
     # month_start = 7
@@ -361,9 +359,9 @@ def process_order(file):
 
 
 def date_ordered_file_list():
-    orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
+    current_orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
     dic = {}
-    for order in orders:
+    for order in current_orders:
         dic[order[:-4].split("_")[1]] = order
 
     sorted_dic = sorted(dic.items(), key=lambda kv: datetime.datetime.strptime(kv[0], "%Y%m%d%H%M%S"), reverse=True)
@@ -378,7 +376,7 @@ def write_tag_merge():
     with open(os.path.join(gblv.downloaded_orders_path, tag_filename), 'w+') as log:
         log.write("jobname\tmailing date\tfilecount\n")
         for line in get_order_by_date.processing_files_log(gblv):
-            log.write("{0}\t{1}\t{2:,}\n".format(line[1],line[8], line[3]))
+            log.write("{0}\t{1}\t{2:,}\n".format(line[1], line[8], line[3]))
 
 
 def job_agent_status(days):
@@ -446,12 +444,11 @@ if __name__ == '__main__':
     gblv.set_order_paths()
     gblv.set_token_name()
     gblv.set_db_name()
-    get_order_by_date.clear_file_history_table(gblv)
+    # get_order_by_date.clear_file_history_table(gblv)
 
-    # get_order_by_date.initialize_databases(gblv)
-    # get_order_by_date.import_userdata(gblv)
-    # download_web_orders(gblv, 5)
-
+    get_order_by_date.initialize_databases(gblv)
+    get_order_by_date.import_userdata(gblv)
+    download_web_orders(5)
 
     # TODO add code here for running through hold path/no match orders for orders
     # TODO make pdf placards for production
@@ -468,4 +465,3 @@ if __name__ == '__main__':
         write_tag_merge()
     else:
         print("No files to process")
-
