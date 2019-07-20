@@ -488,13 +488,14 @@ if __name__ == '__main__':
     gblv.set_order_paths()
     gblv.set_token_name()
     gblv.set_db_name()
-    get_order_by_date.clear_file_history_table(gblv)
 
-    # get_order_by_date.initialize_databases(gblv)
-    # get_order_by_date.import_userdata(gblv)
-    # download_web_orders(5)
+    get_order_by_date.initialize_databases(gblv)
+    get_order_by_date.import_userdata(gblv)
+    download_web_orders(8)
 
     # TODO add code here for running through hold path/no match orders for orders
+
+    # get_order_by_date.clear_file_history_table(gblv)
 
     # Create a list of orders
     orders = date_ordered_file_list()
