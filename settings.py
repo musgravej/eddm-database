@@ -3,7 +3,6 @@ import re
 import json
 import os
 import datetime
-import shutil
 
 """
 Home to the GlobalVar class, and other classes and functions that 
@@ -66,6 +65,10 @@ class GlobalVar:
         self.duplicate_orders_path = os.curdir
         self.hold_orders_path = os.curdir
         self.no_match_orders_path = os.curdir
+        self.complete_processing_path = os.curdir
+
+        self.log_messages = []
+        self.delete_original_files = False
 
     def create_accuzip_dir(self):
         if not os.path.exists(self.accuzip_path):
@@ -77,20 +80,22 @@ class GlobalVar:
             self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
             self.hold_path = os.path.join(self.downloaded_orders_path, 'hold')
             self.reset_routes_path = os.path.join(self.downloaded_orders_path, 'reset_routes')
-            self.save_orders_path = os.path.join(self.downloaded_orders_path, 'completed_orders')
+            self.save_orders_path = os.path.join(self.downloaded_orders_path, 'success_orders')
             self.hold_orders_path = os.path.join(self.downloaded_orders_path, 'hold_orders')
             self.duplicate_orders_path = os.path.join(self.hold_orders_path, 'duplicate_orders')
             self.no_match_orders_path = os.path.join(self.hold_orders_path, 'no_order_match')
+            self.complete_processing_path = os.path.join(self.downloaded_orders_path, 'complete_processing_files')
             self.create_accuzip_dir()
         else:
             self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm', 'test'))
             self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
             self.hold_path = os.path.join(self.downloaded_orders_path, 'hold')
             self.reset_routes_path = os.path.join(self.downloaded_orders_path, 'reset_routes')
-            self.save_orders_path = os.path.join(self.downloaded_orders_path, 'completed_orders')
+            self.save_orders_path = os.path.join(self.downloaded_orders_path, 'success_orders')
             self.hold_orders_path = os.path.join(self.downloaded_orders_path, 'hold_orders')
             self.duplicate_orders_path = os.path.join(self.hold_orders_path, 'duplicate_orders')
             self.no_match_orders_path = os.path.join(self.hold_orders_path, 'no_order_match')
+            self.complete_processing_path = os.path.join(self.downloaded_orders_path, 'complete_processing_files')
             self.create_accuzip_dir()
 
     def set_environment(self, env):
@@ -136,8 +141,10 @@ class EDDMOrder:
             return 'RESIDENTIAL CUSTOMER'
         return 'POSTAL CUSTOMER'
 
-    def set_touch_2_maildate(self):
-        proc_dt = self.touch_1_maildate + datetime.timedelta(days=45)
+    def set_touch_2_maildate(self, file_date):
+        """Touch 2 is 33 days from the order date"""
+        proc_dt = datetime.datetime.strptime(file_date, "%Y%m%d%H%M%S")
+        proc_dt = proc_dt + datetime.timedelta(days=33)
         day_of_week = proc_dt.isoweekday()
 
         while day_of_week > 5:
@@ -147,6 +154,7 @@ class EDDMOrder:
         self.touch_2_maildate = proc_dt
 
     def set_touch_1_maildate(self, file_date):
+        """Touch 1 is 5 days from the order date"""
         proc_dt = datetime.datetime.strptime(file_date, "%Y%m%d%H%M%S")
         proc_dt = proc_dt + datetime.timedelta(days=5)
         day_of_week = proc_dt.isoweekday()

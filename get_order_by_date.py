@@ -292,7 +292,7 @@ def processing_files_table(gblv, orders):
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
 
-    cursor.execute("DELETE FROM `ProcessingFiles`;")
+    cursor.execute("DELETE FROM `ProcessingFiles` WHERE `filename` IS NOT NULL ;")
     conn.commit()
 
     # orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
@@ -337,6 +337,64 @@ def clear_file_history_table(gblv):
     conn.close()
 
 
+def import_userdata(gblv):
+    """
+    Imports V2FBLUSERDATA.txt file from path, used to determine if user is still active
+    """
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+
+    sql = "DROP TABLE IF EXISTS `v2fbluserdata`;"
+    cursor.execute(sql)
+
+    sql = ("CREATE TABLE `v2fbluserdata` ("
+           "`agent_id` VARCHAR(10) NOT NULL,"
+           "`nickname` VARCHAR(60) DEFAULT NULL,"
+           "`fname` VARCHAR(60) DEFAULT NULL,"
+           "`lname` VARCHAR(60) DEFAULT NULL,"
+           "`cancel_date` DATETIME NULL DEFAULT NULL,"
+           "`file_update_date` DATETIME NULL DEFAULT NULL,"
+           "PRIMARY KEY (`agent_id`));")
+    cursor.execute(sql)
+
+    with open(gblv.user_data_path, 'r') as users:
+        for n, line in enumerate(users):
+            agentid = line[2:7]
+            nickname = line[33:93].strip()
+            fname = line[93:153].strip()
+            lname = line[213:273].strip()
+            cancel_date = (datetime.datetime.strptime(line[386:394], '%Y%m%d')
+                           if not line[386:394] == '00000000' else None)
+
+            sql = ("INSERT INTO `v2fbluserdata` VALUES (?,?,?,?,?, datetime('now', 'localtime'));")
+            cursor.execute(sql, (agentid, nickname, fname, lname, cancel_date,))
+
+    conn.commit()
+
+
+def append_filename_to_orderdetail(gblv):
+    sql = ("UPDATE OrderDetail SET `file_match` = "
+           "(SELECT filename FROM ProcessingFiles WHERE jobname = "
+           'TRIM((OrderDetail.order_order_number||"_"||OrderDetail.order_detail_id))) '
+           "WHERE EXISTS (SELECT filename FROM ProcessingFiles WHERE "
+           'jobname = TRIM((OrderDetail.order_order_number||"_"||OrderDetail.order_detail_id))) ;')
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql)
+    conn.commit()
+    conn.close()
+
+
+def processing_table_to_history(gblv):
+    """Backs up ProcessingFiles table to ProcessingFilesHistory"""
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute("REPLACE INTO `ProcessingFilesHistory` SELECT * FROM `ProcessingFiles`;")
+    conn.commit()
+    conn.close()
+
+
 def update_file_history_table(gblv, **insert_values):
 
     sql = ("REPLACE INTO `FileHistory` VALUES ("
@@ -359,7 +417,7 @@ def update_file_history_table(gblv, **insert_values):
 
 def status_update_processing_file_table(gblv, filename, message):
 
-    sql = ("UPDATE `ProcessingFiles` SET `staus` = ? "
+    sql = ("UPDATE `ProcessingFiles` SET `status` = ? "
             "where `filename` = ?;")
 
     conn = sqlite3.connect(gblv.db_name)
@@ -367,6 +425,54 @@ def status_update_processing_file_table(gblv, filename, message):
     cursor.execute(sql, (message, filename))
     conn.commit()
     conn.close()
+
+
+def processing_files_log(gblv):
+    sql = ('SELECT a.filename, IFNULL(b.jobname, ""), '
+           "DATETIME(a.order_datetime_utc, 'localtime'), "
+           "a.order_records, a.order_file_touches, "
+           "IFNULL(a.marcom_records, 0), "
+           "IFNULL(a.marcom_order_touches, 0), "
+           "a.status, b.mailing_date "
+           "FROM processingfiles a LEFT JOIN filehistory b "
+           "ON substr(a.jobname, 1, 17) = substr(b.jobname, 1, 17) "
+           "WHERE b.mailing_date is not null;")
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql)
+
+    results = cursor.fetchall()
+
+    conn.commit()
+    conn.close()
+
+    return results
+
+
+def jobs_mailing_agent_status(gblv, days):
+    """
+    Runs a query that will show the active status of agents
+    with jobs mailing in the next [days] from today
+    """
+    sql = ("SELECT a.jobname, a.mailing_date, a.user_id, "
+              "b.agent_id, case when b.cancel_date is null "
+              "then 'ACTIVE' else 'INACTIVE' END "
+              ', (b.nickname||" "||b.lname) FROM FileHistory a '
+              "JOIN v2fbluserdata b ON a.user_id = b.agent_id WHERE "
+              "abs(cast((julianday(a.mailing_date) - julianday(date('now', 'localtime'))) "
+              "as INTEGER )) < ? ORDER BY a.mailing_date ASC;")
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql, (days,))
+
+    results = cursor.fetchall()
+
+    conn.commit()
+    conn.close()
+
+    return results
 
 
 def extended_update_processing_file_table(gblv, filename, eddm_order):
@@ -474,7 +580,8 @@ def file_to_order_previous_match(fle, gblv, min_diff=120):
            "c.create_date_pst 'order pst', a.order_records 'file records', "
            "a.order_file_touches 'file touches', a.user_id 'file user id', "
            "b.eddm_touches 'order touches', "
-           "abs(cast((julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
+           "abs(cast((julianday(a.order_datetime_pst) - "
+           "julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
            ", b.quantity 'order qty'"
            "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
            "JOIN OrderRequestByDate c ON b.order_id = c.order_id "
@@ -509,7 +616,8 @@ def file_to_order_soft_match(fle, gblv, min_diff=120):
            "c.create_date_pst 'order pst', a.order_records 'file records', "
            "a.order_file_touches 'file touches', a.user_id 'file user id', "
            "b.eddm_touches 'order touches', "
-           "abs(cast((julianday(a.order_datetime_pst) - julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
+           "abs(cast((julianday(a.order_datetime_pst) - "
+           "julianday(c.create_date_pst)) * 24 * 60 as INTEGER )) 'min diff' "
            ", b.quantity 'order qty'"
            "FROM ProcessingFiles a JOIN OrderDetail b ON a.user_id = b.user_id "
            "JOIN OrderRequestByDate c ON b.order_id = c.order_id "
@@ -583,6 +691,8 @@ def initialize_databases(gblv):
     cursor.execute(sql)
 
     # table of currently processing files
+    # changes to this table needs to be reflected in 
+    # ProcessingFilesHistory table
     sql = ("CREATE TABLE IF NOT EXISTS `ProcessingFiles` ("
            "`filename` VARCHAR(100) NOT NULL,"
            "`jobname` VARCHAR(100) NULL DEFAULT NULL,"
@@ -593,7 +703,7 @@ def initialize_databases(gblv):
            "`order_file_touches` INT(1) NULL DEFAULT NULL,"
            "`marcom_records` INT(8) NULL DEFAULT NULL,"
            "`marcom_order_touches` INT(1) NULL DEFAULT NULL,"
-           "`staus` VARCHAR(100) NULL DEFAULT NULL,"
+           "`status` VARCHAR(100) NULL DEFAULT NULL,"
            "`user_id` VARCHAR(50) NULL DEFAULT NULL,"
            "PRIMARY KEY (`filename`));")
     cursor.execute(sql)
@@ -601,7 +711,7 @@ def initialize_databases(gblv):
     # table of history of processing files
     sql = ("CREATE TABLE IF NOT EXISTS `ProcessingFilesHistory` ("
            "`filename` VARCHAR(100) NOT NULL,"
-           "`jobname` VARCHAR(100) DEFAULT NULL,"
+           "`jobname` VARCHAR(100) NULL DEFAULT NULL,"
            "`order_datetime_utc` DATETIME NULL DEFAULT NULL,"
            "`order_datetime_pst` DATETIME NULL DEFAULT NULL,"
            "`order_processed_utc` DATETIME NULL DEFAULT NULL,"
@@ -609,6 +719,7 @@ def initialize_databases(gblv):
            "`order_file_touches` INT(1) NULL DEFAULT NULL,"
            "`marcom_records` INT(8) NULL DEFAULT NULL,"
            "`marcom_order_touches` INT(1) NULL DEFAULT NULL,"
+           "`status` VARCHAR(100) NULL DEFAULT NULL,"
            "`user_id` VARCHAR(50) NULL DEFAULT NULL,"
            "PRIMARY KEY (`filename`));")
     cursor.execute(sql)
@@ -628,6 +739,7 @@ def initialize_databases(gblv):
 
     sql = ("CREATE TABLE IF NOT EXISTS `OrderDetail` ("
            "`eddm_touches` INT(1) NULL,"
+           "`file_match` VARCHAR(100) NULL DEFAULT NULL,"
            "`order_id` INT(11) NOT NULL,"
            "`order_detail_id` INT(11) NOT NULL,"
            "`order_type` VARCHAR(50) NULL DEFAULT NULL,"
