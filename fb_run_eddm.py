@@ -402,10 +402,22 @@ def process_order(file):
     process_dat(file)
 
 
-def date_ordered_file_list():
-    current_orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
+def process_non_match(hours):
+    """
+    Processes previously non-matched files.  Files older than [hours] are moved into a deleted folder,
+    routes will need to be released.
+    Lists less than [hours] old will be run through processing again in an attempt to
+    match to Marcom.
+    :return:
+    """
+    non_match = settings.NonMatchOrders(hours)
+    non_match.get_files_under_threshold(gblv)
+    print(non_match.file_under_threshold)
+
+
+def date_ordered_file_list(eval_list):
     dic = {}
-    for order in current_orders:
+    for order in eval_list:
         dic[order[:-4].split("_")[1]] = order
 
     sorted_dic = sorted(dic.items(), key=lambda kv: datetime.datetime.strptime(kv[0], "%Y%m%d%H%M%S"), reverse=True)
@@ -489,16 +501,20 @@ if __name__ == '__main__':
     gblv.set_token_name()
     gblv.set_db_name()
 
-    get_order_by_date.initialize_databases(gblv)
-    get_order_by_date.import_userdata(gblv)
-    download_web_orders(8)
+    # get_order_by_date.initialize_databases(gblv)
+    # get_order_by_date.import_userdata(gblv)
+    # download_web_orders(8)
 
     # TODO add code here for running through hold path/no match orders for orders
+
+    process_non_match(48)
+    exit()
 
     # get_order_by_date.clear_file_history_table(gblv)
 
     # Create a list of orders
-    orders = date_ordered_file_list()
+    downloaded_orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
+    orders = date_ordered_file_list(downloaded_orders)
     # Create table of orders to process
     get_order_by_date.processing_files_table(gblv, orders)
     for order in orders:

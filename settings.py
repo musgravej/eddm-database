@@ -166,6 +166,24 @@ class EDDMOrder:
         self.touch_1_maildate = proc_dt
 
 
+class NonMatchOrders:
+    def __init__(self, hours):
+        self.hour_threshold = hours
+        self.file_under_threshold = []
+        self.file_over_threshold = []
+
+    def get_files_under_threshold(self, gblv):
+        # list all files in non-match path
+        all_non_match = [f for f in os.listdir(gblv.no_match_orders_path) if f[-3:].upper() == 'DAT']
+        # Run through all_non_match to make new list of those older than 48 hours
+        under = []
+        for non in all_non_match:
+            diff = datetime.datetime.utcnow() - datetime.datetime.strptime(non[-18:-4], "%Y%m%d%H%M%S")
+            days, seconds = diff.days, diff.seconds
+            hours = days * 24 + seconds // 3600
+            print(non, hours)
+
+
 def clean_json(json_string):
     """
     This is a stupid way to deal with a problem it was taking me all f-ing day
