@@ -4,6 +4,7 @@ import datetime
 import os
 import usps_api
 
+
 def touch_2_maildate(file_date):
     proc_dt = file_date + datetime.timedelta(days=45)
     day_of_week = proc_dt.isoweekday()

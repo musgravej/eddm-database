@@ -18,7 +18,9 @@ class GlobalVar:
         self.order_db = os.path.join(os.curdir, 'orders.db')
 
         self.fb_token = config['token']['fb_token']
-        self.fb_qa_token = config['token']['fbmtk-qa_token']
+        # self.fb_qa_token = config['token']['fbmtk-qa_token']
+        # Changed this token to the production token, now working with live orders 2019-07-22
+        self.fb_qa_token = config['token']['fb_token']
         self.closeout_token = config['token']['closeout_token']
 
         # Push XML to MarcomCentral
@@ -46,12 +48,12 @@ class GlobalVar:
                          }
 
         # Work environment
-        # self.user_data_path = (os.path.join('\\\\JTSRV4', 'Data', 'Customer Files', 'In Progress',
-        #                                     '01-Web Storefront DBs', 'FB Marketing Toolkit', 'Current',
-        #                                     'V2FBLUSERDATA.TXT'))
+        self.user_data_path = (os.path.join('\\\\JTSRV4', 'Data', 'Customer Files', 'In Progress',
+                                            '01-Web Storefront DBs', 'FB Marketing Toolkit', 'Current',
+                                            'V2FBLUSERDATA.TXT'))
 
         # Home environment
-        self.user_data_path = (os.path.join(os.curdir, 'v2fbluserdata', 'V2FBLUSERDATA.TXT'))
+        # self.user_data_path = (os.path.join(os.curdir, 'v2fbluserdata', 'V2FBLUSERDATA.TXT'))
 
         self.web_to_print_path = "\\\\JTSRV3\\Job Ticket Feed docs\\WebToPrint"
 
@@ -60,12 +62,12 @@ class GlobalVar:
         self.downloaded_orders_path = os.curdir
         self.save_orders_path = os.curdir
         self.accuzip_path = os.curdir
-        self.hold_path = os.curdir
         self.reset_routes_path = os.curdir
         self.duplicate_orders_path = os.curdir
         self.hold_orders_path = os.curdir
         self.no_match_orders_path = os.curdir
         self.complete_processing_path = os.curdir
+        self.deleted_orders_path = os.curdir
 
         self.log_messages = []
         self.delete_original_files = False
@@ -78,25 +80,23 @@ class GlobalVar:
         if self.environment.upper() == 'PRODUCTION':
             self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm', 'production'))
             self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
-            self.hold_path = os.path.join(self.downloaded_orders_path, 'hold')
             self.reset_routes_path = os.path.join(self.downloaded_orders_path, 'reset_routes')
             self.save_orders_path = os.path.join(self.downloaded_orders_path, 'success_orders')
             self.hold_orders_path = os.path.join(self.downloaded_orders_path, 'hold_orders')
             self.duplicate_orders_path = os.path.join(self.hold_orders_path, 'duplicate_orders')
             self.no_match_orders_path = os.path.join(self.hold_orders_path, 'no_order_match')
             self.complete_processing_path = os.path.join(self.downloaded_orders_path, 'complete_processing_files')
-            self.create_accuzip_dir()
+            self.deleted_orders_path = os.path.join(self.downloaded_orders_path, 'deleted_orders')
         else:
             self.downloaded_orders_path = os.path.join(os.path.join(os.curdir, 'fb-eddm', 'test'))
             self.accuzip_path = os.path.join(self.downloaded_orders_path, 'accuzip_orders')
-            self.hold_path = os.path.join(self.downloaded_orders_path, 'hold')
             self.reset_routes_path = os.path.join(self.downloaded_orders_path, 'reset_routes')
             self.save_orders_path = os.path.join(self.downloaded_orders_path, 'success_orders')
             self.hold_orders_path = os.path.join(self.downloaded_orders_path, 'hold_orders')
             self.duplicate_orders_path = os.path.join(self.hold_orders_path, 'duplicate_orders')
             self.no_match_orders_path = os.path.join(self.hold_orders_path, 'no_order_match')
             self.complete_processing_path = os.path.join(self.downloaded_orders_path, 'complete_processing_files')
-            self.create_accuzip_dir()
+            self.deleted_orders_path = os.path.join(self.downloaded_orders_path, 'deleted_orders')
 
     def set_environment(self, env):
         # set to 'Production' for production, anything else, not production
@@ -172,16 +172,19 @@ class NonMatchOrders:
         self.file_under_threshold = []
         self.file_over_threshold = []
 
-    def get_files_under_threshold(self, gblv):
+    def set_threshold_lists(self, gblv):
         # list all files in non-match path
         all_non_match = [f for f in os.listdir(gblv.no_match_orders_path) if f[-3:].upper() == 'DAT']
-        # Run through all_non_match to make new list of those older than 48 hours
-        under = []
+        # Run through all_non_match to make new list of those older than
+        # self.hour_threshold hours and younger than self.hour_threshold hours
         for non in all_non_match:
             diff = datetime.datetime.utcnow() - datetime.datetime.strptime(non[-18:-4], "%Y%m%d%H%M%S")
             days, seconds = diff.days, diff.seconds
             hours = days * 24 + seconds // 3600
-            print(non, hours)
+            if hours <= self.hour_threshold:
+                self.file_under_threshold.append(non)
+            else:
+                self.file_over_threshold.append(non)
 
 
 def clean_json(json_string):

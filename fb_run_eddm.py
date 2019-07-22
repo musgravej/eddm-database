@@ -265,10 +265,10 @@ def create_job_tags(fle_path, **val):
             pdf.set_y(pdf.get_y() + 1.25)
             pdf.cell(10.5, 1.25, "Touch {} of 2".format(val['touch']), 0, 0, 'C')
 
-            pdf.set_y(pdf.get_y() + 1.25)
+            pdf.set_y(pdf.get_y() + 1.4)
             pdf.set_font('Arial', 'B', 60)
             pdf.cell(10.5, 1.25, "WAIT FOR APPROVAL".format(val['touch']), 0, 0, 'C')
-            pdf.set_y(pdf.get_y() + .65)
+            pdf.set_y(pdf.get_y() + .75)
             pdf.cell(10.5, 1.25, "BEFORE MAILING".format(val['touch']), 0, 0, 'C')
         else:
             pdf_name = "{} JOB TAGS.pdf".format(val['jobname'])
@@ -408,11 +408,34 @@ def process_non_match(hours):
     routes will need to be released.
     Lists less than [hours] old will be run through processing again in an attempt to
     match to Marcom.
-    :return:
     """
+    print_log("Processing previous non-match records")
+
+    # First, find out if there are any orders that haven't been matched yet.
+    # If there are no orders that have not been matched, immmediately delete orders over hour threshold,
+    # Otherwise, look to match unmatched orders to order detail orders that havevn't been matched.
+
+    # Create non-match object for processing
     non_match = settings.NonMatchOrders(hours)
-    non_match.get_files_under_threshold(gblv)
-    print(non_match.file_under_threshold)
+    # Populate lists of records in no_order_match directory that are over and under hour threshold
+    non_match.set_threshold_lists(gblv)
+    # Order those lists by date, newest first
+    non_match.file_over_threshold = date_ordered_file_list(non_match.file_over_threshold)
+    non_match.file_under_threshold = date_ordered_file_list(non_match.file_under_threshold)
+
+    # Figure out if any orders haven't been matched to previous orders
+    if int(get_order_by_date.count_unmatched_orders_order_detail(gblv)[0][0]) > 0:
+        print_log("Searching previously unmatched Marcom orders")
+        # TODO make table of all order data,
+    else:
+        print_log("No unmatched Marcom orders to search")
+        print_log("Moving orders older than {} hours to deleted directory".format(hours))
+        for order in non_match.file_over_threshold:
+            move_file_to_new_folder(gblv.no_match_orders_path,
+                                    gblv.deleted_orders_path, order,
+                                    delete_original=False)
+
+
 
 
 def date_ordered_file_list(eval_list):
@@ -436,6 +459,11 @@ def write_tag_merge():
 
 
 def job_agent_status(days):
+    """
+    Writes a report of jobs in the next [days] days, and the agent status of each job
+    :param days:
+    :return:
+    """
     report_filename = "Agent_Job Status_{datestring}.txt".format(
             datestring=datetime.datetime.strftime(datetime.datetime.now(), "%Y-%m-%d"))
 
@@ -454,6 +482,11 @@ def job_agent_status(days):
         for line in get_order_by_date.jobs_mailing_agent_status(gblv, days):
             log.write("{:<25}{:<18}{:<12}{:<12}{:<40}\n".format(line[0], line[1], line[2], line[4], line[5]))
 
+        log.write("\n\nReport run {}".format(datetime.datetime.strftime(datetime.datetime.now(),
+                                                                        "%Y-%m-%d %I:%M %p")))
+
+        log.write("\nV2FBLUSERDATA last updated: {}\n".format(get_order_by_date.v2fbluserdata_update_date(gblv)[0][0]))
+
 
 def write_message_log():
 
@@ -465,6 +498,7 @@ def write_message_log():
             log.write("{}\n".format(message))
 
         log.write("\n\n")
+        log.write("Summary of files processed:\n\n")
         log.write("{:<28}{:<24}{:<24}{:<14}{:>10}{:>15}{:>15}"
                   "{:>17}{:>5}{:<100}\n".format("filename",
                                                 "jobname",
@@ -495,22 +529,22 @@ if __name__ == '__main__':
     global gblv
     gblv = settings.GlobalVar()
     # Set environment to 'PRODUCTION' for production
-    # gblv.set_environment('QA')
-    gblv.set_environment('PRODUCTION')
+    gblv.set_environment('QA')
+    # gblv.set_environment('PRODUCTION')
     gblv.set_order_paths()
+    gblv.create_accuzip_dir()
     gblv.set_token_name()
     gblv.set_db_name()
 
     # get_order_by_date.initialize_databases(gblv)
     # get_order_by_date.import_userdata(gblv)
-    # download_web_orders(8)
-
-    # TODO add code here for running through hold path/no match orders for orders
+    # download_web_orders(14)
 
     process_non_match(48)
+    # job_agent_status(5)
     exit()
 
-    # get_order_by_date.clear_file_history_table(gblv)
+    get_order_by_date.clear_file_history_table(gblv)
 
     # Create a list of orders
     downloaded_orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
@@ -524,6 +558,9 @@ if __name__ == '__main__':
         get_order_by_date.append_filename_to_orderdetail(gblv)
         get_order_by_date.processing_table_to_history(gblv)
         write_message_log()
+        job_agent_status(5)
         # write_tag_merge()
     else:
-        print("No files to process")
+        print("No new files to process")
+
+    # TODO add code here for running through hold path/no match orders for orders

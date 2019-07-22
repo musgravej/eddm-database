@@ -418,7 +418,7 @@ def update_file_history_table(gblv, **insert_values):
 def status_update_processing_file_table(gblv, filename, message):
 
     sql = ("UPDATE `ProcessingFiles` SET `status` = ? "
-            "where `filename` = ?;")
+           "where `filename` = ?;")
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
@@ -427,16 +427,47 @@ def status_update_processing_file_table(gblv, filename, message):
     conn.close()
 
 
+def v2fbluserdata_update_date(gblv):
+    sql = "SELECT strftime('%Y-%m-%d %H:%m:%S', file_update_date) FROM v2fbluserdata LIMIT 1;"
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql)
+    results = cursor.fetchall()
+
+    conn.commit()
+    conn.close()
+
+    return results
+
+def count_unmatched_orders_order_detail(gblv):
+    sql = "SELECT count(*) FROM orderdetail WHERE file_match IS NULL;"
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql)
+    results = cursor.fetchall()
+
+    conn.commit()
+    conn.close()
+
+    return results
+
+
 def processing_files_log(gblv):
-    sql = ('SELECT a.filename, IFNULL(b.jobname, ""), '
-           "DATETIME(a.order_datetime_utc, 'localtime'), "
-           "a.order_records, a.order_file_touches, "
-           "IFNULL(a.marcom_records, 0), "
-           "IFNULL(a.marcom_order_touches, 0), "
-           "a.status, b.mailing_date "
-           "FROM processingfiles a LEFT JOIN filehistory b "
-           "ON substr(a.jobname, 1, 17) = substr(b.jobname, 1, 17) "
-           "WHERE b.mailing_date is not null;")
+    sql = ('SELECT * FROM (SELECT a.filename, IFNULL(b.jobname, "")'
+           ", DATETIME(a.order_datetime_utc, 'localtime'), "
+           "a.order_records, a.order_file_touches, IFNULL(a.marcom_records, 0), "
+           "IFNULL(a.marcom_order_touches, 0), a.status, IFNULL(b.mailing_date, '') "
+           "FROM processingfiles a LEFT JOIN filehistory b ON "
+           "substr(a.jobname, 1, 17) = substr(b.jobname, 1, 17) "
+           "WHERE b.mailing_date is not null ORDER BY b.mailing_date ASC) "
+           "UNION ALL "
+           'SELECT * FROM (SELECT a.filename, IFNULL(b.jobname, "")'
+           ", DATETIME(a.order_datetime_utc, 'localtime'), "
+           "a.order_records, a.order_file_touches, IFNULL(a.marcom_records, 0), "
+           "IFNULL(a.marcom_order_touches, 0), a.status, "
+           "IFNULL(b.mailing_date, '') FROM processingfiles a LEFT JOIN "
+           "filehistory b ON substr(a.jobname, 1, 17) = substr(b.jobname, 1, 17) "
+           "WHERE b.mailing_date is null ORDER BY a.order_datetime_utc ASC) ;")
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
