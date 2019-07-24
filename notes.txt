@@ -148,9 +148,8 @@ on a.order_id = b.order_id
 ;
 
 select a.*
-	, convert(varchar, a.DateSelected, 1) 'converted'
 from guideone.UserEDDMRoute a
 JOIN guideone.EDDMUser b ON a.EDDMUserId = b.EDDMUserId
 WHERE b.UserName = '09357'
---AND a.DateSelected = '2019-07-18 13:49:18'
+AND DATEADD(ms, -DATEPART(ms, a.DateSelected), a.DateSelected) = '2019-07-18 13:49:18'
 ;

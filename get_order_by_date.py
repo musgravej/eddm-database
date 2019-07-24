@@ -13,6 +13,8 @@ Error during get orders as: prepare_for_mysql result = self._cmysql.convert_to_m
     Look at error message: Python type ArrayOfOrderDetailType**FinishingOption** cannot be converted
     to show which object.
 """
+
+
 def find_template_value_drops(template_field):
         for elem in template_field:
             # print(elem)
@@ -33,7 +35,6 @@ class OrderDetail:
     # create a order_detail list object for OrderDetail table
     def __init__(self):
         self.groups = []
-
 
     def append_to_group(self, od, rec):
         # Remove pesky non-ascii characters
@@ -337,6 +338,61 @@ def clear_file_history_table(gblv):
     conn.close()
 
 
+def clear_processing_files_table(gblv):
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    sql = "DELETE FROM ProcessingFiles WHERE `filename` IS NOT null;"
+    cursor.execute(sql)
+    conn.commit()
+    conn.close()
+
+
+def delete_orders_table(gblv):
+    """
+    Creates a table of all the records that are being released for processing again,
+    for files that are older than 48 hours.
+    """
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+
+    sql = "DROP TABLE IF EXISTS `delete_order_records`;"
+    cursor.execute(sql)
+
+    sql = ("CREATE TABLE `delete_order_records` ("
+           "`filename` VARCHAR(100) NOT NULL,"
+           "`agent_id` VARCHAR(10) NULL DEFAULT NULL,"
+           "`date_selected` DATETIME NULL DEFAULT NULL,"
+           "`city` VARCHAR(60) DEFAULT NULL,"
+           "`state` VARCHAR(2) DEFAULT NULL,"
+           "`zipcode` VARCHAR(5) DEFAULT NULL,"
+           "`routeid` VARCHAR(5) DEFAULT NULL,"
+           "`quantity` int(8) DEFAULT NULL,"
+           "`pos` int(8) DEFAULT NULL,"
+           "`number_of_touches` int(8) DEFAULT NULL);")
+
+    cursor.execute(sql)
+    conn.commit()
+    conn.close()
+
+
+def insert_into_delete_orders_table(gblv, filename, rec):
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    sql = ("INSERT INTO `delete_order_records` (`filename`,"
+           "`agent_id`,`date_selected`,`city`,`state`,`zipcode`,"
+           "`routeid`,`quantity`,`pos`,`number_of_touches`) "
+           "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);")
+
+    # 7/16/2019 7:11:10 PM
+    date_selected = datetime.datetime.strptime(rec['DateSelected'], "%m/%d/%Y %I:%M:%S %p")
+
+    cursor.execute(sql, (filename, rec['AgentID'], date_selected, 
+                         rec['City'], rec['State'], rec['ZipCode'], rec['RouteID'], 
+                         rec['Quantity'], rec['POS'], rec['NumberOfTouches']))
+    conn.commit()
+    conn.close()
+
+
 def import_userdata(gblv):
     """
     Imports V2FBLUSERDATA.txt file from path, used to determine if user is still active
@@ -366,7 +422,7 @@ def import_userdata(gblv):
             cancel_date = (datetime.datetime.strptime(line[386:394], '%Y%m%d')
                            if not line[386:394] == '00000000' else None)
 
-            sql = ("INSERT INTO `v2fbluserdata` VALUES (?,?,?,?,?, datetime('now', 'localtime'));")
+            sql = "INSERT INTO `v2fbluserdata` VALUES (?,?,?,?,?, datetime('now', 'localtime'));"
             cursor.execute(sql, (agentid, nickname, fname, lname, cancel_date,))
 
     conn.commit()
@@ -439,6 +495,7 @@ def v2fbluserdata_update_date(gblv):
 
     return results
 
+
 def count_unmatched_orders_order_detail(gblv):
     sql = "SELECT count(*) FROM orderdetail WHERE file_match IS NULL;"
     conn = sqlite3.connect(gblv.db_name)
@@ -487,12 +544,12 @@ def jobs_mailing_agent_status(gblv, days):
     with jobs mailing in the next [days] from today
     """
     sql = ("SELECT a.jobname, a.mailing_date, a.user_id, "
-              "b.agent_id, case when b.cancel_date is null "
-              "then 'ACTIVE' else 'INACTIVE' END "
-              ', (b.nickname||" "||b.lname) FROM FileHistory a '
-              "JOIN v2fbluserdata b ON a.user_id = b.agent_id WHERE "
-              "abs(cast((julianday(a.mailing_date) - julianday(date('now', 'localtime'))) "
-              "as INTEGER )) < ? ORDER BY a.mailing_date ASC;")
+           "b.agent_id, case when b.cancel_date is null "
+           "then 'ACTIVE' else 'INACTIVE' END "
+           ', (b.nickname||" "||b.lname) FROM FileHistory a '
+           "JOIN v2fbluserdata b ON a.user_id = b.agent_id WHERE "
+           "abs(cast((julianday(a.mailing_date) - julianday(date('now', 'localtime'))) "
+           "as INTEGER )) < ? ORDER BY a.mailing_date ASC;")
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()
@@ -1006,28 +1063,6 @@ def print_dict(d):
     if isinstance(d, (dict,)):
         for key, value in d.items():
             print("{0} --> {1}".format(key, value))
-
-
-def update_fedex_tables(create_date, config_path, database):
-
-    gbl = settings.GlobalVar(config_path)
-    db_param = {'host': 'localhost',
-                'user': gbl.db_user,
-                'password': gbl.db_password}
-
-    # Make a sql connection
-    conn = sqlite3.connector.connect(database=database, **db_param)
-    cursor = conn.cursor()
-
-    try:
-        sql = ("CALL {database}.add_to_fedex_shipping('{create_date}');".format(database=database,
-                                                                                create_date=create_date))
-        print(sql)
-        cursor.execute(sql)
-        conn.commit()
-
-    except sqlite3.Error as err:
-        print("Error: {}".format(err))
 
 
 def replace_into_webuser(record_obj, conn):
