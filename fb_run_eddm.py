@@ -110,6 +110,10 @@ def write_azzuzip_files(eddm_order, fle_path, fle, match_search, copy_to_accuzip
             write_ini(insert_values['jobname'], insert_values['mailing_date'])
 
 
+def process_48_hour_dat(fle):
+    pass
+
+
 def process_dat(fle):
     eddm_order = settings.EDDMOrder()
     eddm_order.set_mailing_residential(True)
@@ -396,12 +400,6 @@ def move_file_to_new_folder(from_path, to_path, fle, overwrite=False, delete_ori
         os.remove(os.path.join(from_path, fle))
 
 
-def process_order(file):
-    process_path = os.path.join(gblv.downloaded_orders_path, file[:-4])
-    create_directory_path(process_path)
-    process_dat(file)
-
-
 def process_non_match(hours):
     """
     Processes previously non-matched files.  Files older than [hours] are moved into a deleted folder,
@@ -429,26 +427,31 @@ def process_non_match(hours):
         # TODO make table of all order data, run through to delete orders
     else:
         print_log("No unmatched Marcom orders to search")
-        print_log("Processing files to unlock routes")
-        get_order_by_date.delete_orders_table(gblv)
-        for order in non_match.file_over_threshold:
-            with open(os.path.join(gblv.no_match_orders_path, order), 'r') as o:
-                csvr = csv.DictReader(o, ['AgentID','DateSelected','City','State',
-                                          'ZipCode','RouteID','Quantity','POS',
-                                          'NumberOfTouches'], delimiter='\t')
-                next(csvr)
-                for line in csvr:
-                    get_order_by_date.insert_into_delete_orders_table(gblv, order, line)
 
 
-        print_log("Moving orders older than {} hours to deleted directory".format(hours))
-        for order in non_match.file_over_threshold:
-            print_log("\tMoving {} to deleted_orders".format(order))
-            move_file_to_new_folder(gblv.no_match_orders_path,
-                                    gblv.deleted_orders_path, order,
-                                    delete_original=False)
+    print_log("Processing files to unlock routes")
+    get_order_by_date.delete_orders_table(gblv)
+    for order in non_match.file_over_threshold:
+        # All all records from old orders into delete_order_records table
+        with open(os.path.join(gblv.no_match_orders_path, order), 'r') as o:
+            csvr = csv.DictReader(o, ['AgentID','DateSelected','City','State',
+                                      'ZipCode','RouteID','Quantity','POS',
+                                      'NumberOfTouches'], delimiter='\t')
+            next(csvr)
+            for line in csvr:
+                get_order_by_date.insert_into_delete_orders_table(gblv, order, line)
 
+    # create set of session ids to unlock
+    session_id = get_order_by_date.delete_order_record_session_ids(gblv)
+    # iterate through sessions ids and unlock routes
+    get_order_by_date.delete_order_record_unlock_routes(gblv, session_id)
 
+    print_log("Moving orders older than {} hours to deleted directory".format(hours))
+    for order in non_match.file_over_threshold:
+        print_log("\tMoving {} to deleted_orders".format(order))
+        move_file_to_new_folder(gblv.no_match_orders_path,
+                                gblv.deleted_orders_path, order,
+                                delete_original=False)
 
 
 def date_ordered_file_list(eval_list):
@@ -462,6 +465,7 @@ def date_ordered_file_list(eval_list):
 
 
 def write_tag_merge():
+    """Can write a merge file for running tags through a fusion pro job"""
     tag_filename = "TAG_MERGE_{datestring}.txt".format(
             datestring=datetime.datetime.strftime(datetime.datetime.now(), "%Y-%m-%d_%I %M %p"))
 
@@ -551,12 +555,12 @@ if __name__ == '__main__':
 
     # get_order_by_date.initialize_databases(gblv)
 
-    get_order_by_date.import_userdata(gblv)
-    get_order_by_date.clear_processing_files_table(gblv)
-    download_web_orders(2)
+    # get_order_by_date.import_userdata(gblv)
+    # get_order_by_date.clear_processing_files_table(gblv)
+    # download_web_orders(2)
 
-    # process_non_match(48)
-    # exit()
+    process_non_match(48)
+    exit()
 
     # get_order_by_date.clear_file_history_table(gblv)
 
@@ -573,7 +577,6 @@ if __name__ == '__main__':
         get_order_by_date.processing_table_to_history(gblv)
         write_message_log()
         job_agent_status(5)
-        # write_tag_merge()
     else:
         print("No new files to process")
 

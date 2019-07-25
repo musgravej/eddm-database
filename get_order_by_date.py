@@ -6,6 +6,7 @@ import bs4
 import sqlite3
 import settings
 import re
+import pytds
 
 """
 Error during get orders as: prepare_for_mysql result = self._cmysql.convert_to_mysql(*params)
@@ -538,6 +539,54 @@ def processing_files_log(gblv):
     return results
 
 
+def delete_order_record_unlock_routes(gblv, session_id_set):
+
+    with pytds.connect(gblv.mssql_connection, 
+                       gblv.mssql_database, 
+                       gblv.mssql_user, 
+                       gblv.mssql_pass) as conn:
+
+        with conn.cursor() as cur:
+            for sess_id in session_id_set:
+                sql = "EXEC guideone.EDDM_DeleteSelectedRoutes '{}';".format(sess_id)
+                # print(sql)
+                cur.execute(sql)
+
+        conn.commit()
+
+
+def delete_order_record_session_ids(gblv):
+    sql = "SELECT agent_id, date_selected FROM delete_order_records;"
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    conn.close()
+
+    session_id_set = set()
+    for agentid, date_selected in results:
+        with pytds.connect(gblv.mssql_connection, 
+                           gblv.mssql_database, 
+                           gblv.mssql_user, 
+                           gblv.mssql_pass) as conn:
+
+            with conn.cursor() as cur:
+                mssql = ("SELECT a.* FROM guideone.UserEDDMRoute a "
+                         "JOIN guideone.EDDMUser b ON "
+                         "a.EDDMUserId = b.EDDMUserId "
+                         "WHERE b.UserName = '{}' AND "
+                         "DATEADD(ms, -DATEPART(ms, a.DateSelected), a.DateSelected) "
+                         "= '{}';".format(agentid, date_selected)) 
+
+                cur.execute(mssql)
+
+                for rec in cur.fetchall():
+                    session_id_set.add(rec[6])
+
+    return session_id_set
+
+
 def jobs_mailing_agent_status(gblv, days):
     """
     Runs a query that will show the active status of agents
@@ -548,8 +597,8 @@ def jobs_mailing_agent_status(gblv, days):
            "then 'ACTIVE' else 'INACTIVE' END "
            ', (b.nickname||" "||b.lname) FROM FileHistory a '
            "JOIN v2fbluserdata b ON a.user_id = b.agent_id WHERE "
-           "abs(cast((julianday(a.mailing_date) - julianday(date('now', 'localtime'))) "
-           "as INTEGER )) < ? ORDER BY a.mailing_date ASC;")
+           "cast((julianday(a.mailing_date) - julianday(date('now', 'localtime'))) "
+           "as INTEGER ) BETWEEN 0 AND ? ORDER BY a.mailing_date ASC;")
 
     conn = sqlite3.connect(gblv.db_name)
     cursor = conn.cursor()

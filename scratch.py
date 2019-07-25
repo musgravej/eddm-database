@@ -34,8 +34,7 @@ def usps_list_check(ziplist):
     pass
 
 
-if __name__ == '__main__':
-
+def dates():
     compare_dt = datetime.datetime.strptime('20190721043700', '%Y%m%d%H%M%S')
     print(datetime.datetime.utcnow())
     print(compare_dt)
@@ -44,3 +43,7 @@ if __name__ == '__main__':
     days, seconds = diff.days, diff.seconds
     hours = days * 24 + seconds // 3600
     print(hours)
+
+
+if __name__ == '__main__':
+    pass

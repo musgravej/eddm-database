@@ -34,6 +34,11 @@ class GlobalVar:
         self.jobticket_url = config['jobticket']['production']
         self.jobticket_url_wsdl = config['jobticket']['production_wsdl']
 
+        self.mssql_connection = config['mssql']['connection']
+        self.mssql_database = config['mssql']['database']
+        self.mssql_user = config['mssql']['user']
+        self.mssql_pass = config['mssql']['pass']
+
         # VERY IMPORTANT
         self.environment = ''
         self.token = ''
