@@ -3,6 +3,7 @@ import re
 import json
 import os
 import datetime
+import fb_run_eddm
 
 """
 Home to the GlobalVar class, and other classes and functions that 
@@ -75,7 +76,7 @@ class GlobalVar:
         self.deleted_orders_path = os.curdir
 
         self.log_messages = []
-        self.delete_original_files = False
+        self.delete_original_files = True
 
     def create_accuzip_dir(self):
         if not os.path.exists(self.accuzip_path):
@@ -115,6 +116,14 @@ class GlobalVar:
 
     def set_db_name(self):
         self.db_name = self.db_names[self.token]
+
+    def print_log(self, message):
+        """
+        Sends message to console, saves message to message log to be recalled later
+        :param message: text message to console
+        """
+        print(message)
+        self.log_messages.append(message)
 
 
 class EDDMOrder:
@@ -177,15 +186,21 @@ class NonMatchOrders:
         self.file_under_threshold = []
         self.file_over_threshold = []
 
-    def set_threshold_lists(self, gblv):
+    def set_threshold_lists(self, gblv, to_console=False):
         # list all files in non-match path
         all_non_match = [f for f in os.listdir(gblv.no_match_orders_path) if f[-3:].upper() == 'DAT']
+        if len(all_non_match) > 0 and to_console:
+            gblv.print_log("Non-match records\n\t{:<45}{:<10}".format("File Name", "Hour"))
         # Run through all_non_match to make new list of those older than
         # self.hour_threshold hours and younger than self.hour_threshold hours
         for non in all_non_match:
             diff = datetime.datetime.utcnow() - datetime.datetime.strptime(non[-18:-4], "%Y%m%d%H%M%S")
             days, seconds = diff.days, diff.seconds
             hours = days * 24 + seconds // 3600
+
+            if to_console:
+                gblv.print_log("\t{:<45}{:<10}".format(non, hours))
+
             if hours <= self.hour_threshold:
                 self.file_under_threshold.append(non)
             else:

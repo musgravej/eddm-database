@@ -25,6 +25,7 @@ def create_database(eddm_order, fle_path, db_name, order_file, copy_to_accuzip=T
     :param fle_path: path to save the files to
     :param db_name: name of new db file
     :param order_file: name of the original order file
+    :param copy_to_accuzip:
     :return:
     """
     full_newdb_path = os.path.join(fle_path, db_name)
@@ -63,7 +64,7 @@ def create_database(eddm_order, fle_path, db_name, order_file, copy_to_accuzip=T
     db_counts.close()
 
     if copy_to_accuzip:
-        print_log("\tmoving to accuzip folder: {}".format(db_name))
+        gblv.print_log("\tmoving to accuzip folder: {}".format(db_name))
         shutil.copy(os.path.join(fle_path, "{}.dbf".format(db_name)),
                     os.path.join(gblv.accuzip_path, "{}.dbf".format(db_name)))
 
@@ -111,7 +112,116 @@ def write_azzuzip_files(eddm_order, fle_path, fle, match_search, copy_to_accuzip
 
 
 def process_48_hour_dat(fle):
-    pass
+    eddm_order = settings.EDDMOrder()
+    eddm_order.set_mailing_residential(True)
+    eddm_order.set_touch_1_maildate(fle[-18:-4])
+    eddm_order.set_touch_2_maildate(fle[-18:-4])
+
+    # get number of touches in the file
+    with open(os.path.join(gblv.no_match_orders_path, fle), 'r') as routes:
+        csvr = csv.DictReader(routes, eddm_order.dat_header, delimiter='\t')
+        next(csvr)
+        running_cnt = 0
+        for rec in csvr:
+            eddm_order.file_touches = int(rec['NumberOfTouches'])
+            running_cnt += int(rec['Quantity'])
+
+        eddm_order.file_qty = running_cnt
+
+    get_order_by_date.update_no_order_file_table(fle, eddm_order, gblv)
+    match_search = get_order_by_date.no_match_to_order_hard_match(fle, gblv, 2880)
+
+    if match_search[0]:
+        # Successful match, all counts match, match to downloaded order data
+        gblv.print_log("Previous non-match order Full Match: {}".format(fle))
+        # print(match_search[1])
+
+        # Update touches to touch count in downloaded order data
+        eddm_order.order_touches = match_search[1][9]
+        eddm_order.order_qty = match_search[1][11]
+        eddm_order.jobname = match_search[1][2]
+
+        # Log any non-matches
+        if match_search[1][7] != match_search[1][9]:
+            eddm_order.processing_messages['touch_match'] = False
+
+        if match_search[1][6] != match_search[1][11]:
+            eddm_order.processing_messages['count_match'] = False
+
+        # process_path = os.path.join(gblv.no_match_orders_path, match_search[1][2])
+        process_path = os.path.join(gblv.save_orders_path, match_search[1][2])
+
+        create_directory_path(process_path)
+        # Copy original file into new directory, in 'original' folder
+        move_file_to_new_folder(gblv.no_match_orders_path,
+                                os.path.join(process_path, 'original'),
+                                fle)
+
+        # Write accuzip dbf files for this job, and save copy to accuzip folder
+        write_azzuzip_files(eddm_order, process_path, fle, match_search[1])
+        # update processing files table, set processing date
+        get_order_by_date.extended_update_no_match_table(gblv, fle, eddm_order)
+        get_order_by_date.status_update_processing_no_match_table(gblv, fle, "Previous non-match: "
+                                                                             "Hard match, order processed")
+        # Copy file to complete_processing_files path
+        move_file_to_new_folder(gblv.no_match_orders_path,
+                                gblv.complete_processing_path, fle, delete_original=gblv.delete_original_files)
+
+    elif get_order_by_date.no_match_to_order_soft_match(fle, gblv, 2880)[0]:
+        # Soft match, mail counts don't match, touch count may not match
+        match_search = get_order_by_date.no_match_to_order_soft_match(fle, gblv, 2880)
+
+        gblv.print_log("Previous non-match order Soft Match: {}".format(fle))
+        # print(match_search[1])
+
+        # Update touches to touch count in downloaded order data
+        eddm_order.order_touches = match_search[1][9]
+        eddm_order.order_qty = match_search[1][11]
+        eddm_order.jobname = match_search[1][2]
+
+        # Log any non-matches
+        if match_search[1][7] != match_search[1][9]:
+            eddm_order.processing_messages['touch_match'] = False
+
+        if match_search[1][6] != match_search[1][11]:
+            eddm_order.processing_messages['count_match'] = False
+
+        # process_path = os.path.join(gblv.no_match_orders_path, match_search[1][2])
+        process_path = os.path.join(gblv.hold_orders_path, match_search[1][2])
+
+        create_directory_path(process_path)
+        # Copy original file into new directory, in 'original' folder
+        move_file_to_new_folder(gblv.no_match_orders_path,
+                                os.path.join(process_path, 'original'),
+                                fle)
+
+        # Write accuzip dbf files for this job, and save copy to accuzip folder
+        write_azzuzip_files(eddm_order, process_path, fle, match_search[1], False)
+        # update processing files table, set processing date
+        get_order_by_date.extended_update_no_match_table(gblv, fle, eddm_order)
+        get_order_by_date.status_update_processing_no_match_table(gblv, fle, "Previous non-match order: "
+                                                                             "Soft match, moved to hold")
+        # Copy file to complete_processing_files path
+        move_file_to_new_folder(gblv.no_match_orders_path,
+                                gblv.complete_processing_path, fle, delete_original=gblv.delete_original_files)
+
+    elif get_order_by_date.file_to_order_previous_match(fle, gblv, 2880)[0]:
+        # Soft match, mail counts don't match, touch count may not match, matches to previous order
+        gblv.print_log("Previous non-match order: Match to previous order: {}".format(fle))
+        get_order_by_date.status_update_processing_file_table(gblv, fle, "Previous non-match order: "
+                                                                         "Soft match to previous job, moved to hold")
+        create_directory_path(gblv.duplicate_orders_path)
+        # Copy file to complete_processing_files path
+        move_file_to_new_folder(gblv.no_match_orders_path, gblv.complete_processing_path, fle)
+        # Copy file to no duplicates folder, and delete from downloaded orders path
+        move_file_to_new_folder(gblv.no_match_orders_path,
+                                gblv.duplicate_orders_path,
+                                fle, delete_original=gblv.delete_original_files)
+
+    else:
+        # No match, move to error
+        gblv.print_log("No match to Marcom order: {}".format(fle))
+        get_order_by_date.status_update_processing_no_match_table(gblv, fle, "NO MATCH TO MARCOM ORDER")
 
 
 def process_dat(fle):
@@ -136,7 +246,7 @@ def process_dat(fle):
 
     if match_search[0]:
         # Successful match, all counts match, match to downloaded order data
-        print_log("Full Match: {}".format(fle))
+        gblv.print_log("Full Match: {}".format(fle))
         # print(match_search[1])
 
         # Update touches to touch count in downloaded order data
@@ -171,7 +281,7 @@ def process_dat(fle):
 
     elif get_order_by_date.file_to_order_hard_previous_match(fle, gblv, 120)[0]:
         # Hard match, matches to previous order
-        print_log("Hard match to previous order: {}".format(fle))
+        gblv.print_log("Hard match to previous order: {}".format(fle))
         get_order_by_date.status_update_processing_file_table(gblv, fle,
                                                               "Hard match to previous job, moved to duplicate")
         create_directory_path(gblv.duplicate_orders_path)
@@ -186,7 +296,7 @@ def process_dat(fle):
         # Soft match, mail counts don't match, touch count may not match
         match_search = get_order_by_date.file_to_order_soft_match(fle, gblv, 120)
 
-        print_log("Soft Match: {}".format(fle))
+        gblv.print_log("Soft Match: {}".format(fle))
         # print(match_search[1])
 
         # Update touches to touch count in downloaded order data
@@ -221,7 +331,7 @@ def process_dat(fle):
 
     elif get_order_by_date.file_to_order_previous_match(fle, gblv, 120)[0]:
         # Soft match, mail counts don't match, touch count may not match, matches to previous order
-        print_log("Match to previous order: {}".format(fle))
+        gblv.print_log("Match to previous order: {}".format(fle))
         get_order_by_date.status_update_processing_file_table(gblv, fle, "Soft match to previous job, moved to hold")
         create_directory_path(gblv.duplicate_orders_path)
         # Copy file to complete_processing_files path
@@ -233,7 +343,7 @@ def process_dat(fle):
 
     else:
         # No match, move to error
-        print_log("No match to Marcom order: {}".format(fle))
+        gblv.print_log("No match to Marcom order: {}".format(fle))
         get_order_by_date.status_update_processing_file_table(gblv, fle, "NO MATCH TO MARCOM ORDER")
         create_directory_path(gblv.no_match_orders_path)
         # Copy file to complete_processing_files path
@@ -317,16 +427,6 @@ def sum_digits(n):
     return r
 
 
-def print_log(message):
-    """
-    Sends message to console, saves message to message log to be recalled later
-    :param message: text message to console
-    :return:
-    """
-    print(message)
-    gblv.log_messages.append(message)
-
-
 def write_ini(fle, mailing_date):
 
     configfile = os.path.join(gblv.accuzip_path, 'mail_dates.ini')
@@ -407,7 +507,7 @@ def process_non_match(hours):
     Lists less than [hours] old will be run through processing again in an attempt to
     match to Marcom.
     """
-    print_log("Processing previous non-match records")
+    gblv.print_log("Processing previous non-match records")
 
     # First, find out if there are any orders that haven't been matched yet.
     # If there are no orders that have not been matched, immmediately delete orders over hour threshold,
@@ -416,26 +516,31 @@ def process_non_match(hours):
     # Create non-match object for processing
     non_match = settings.NonMatchOrders(hours)
     # Populate lists of records in no_order_match directory that are over and under hour threshold
-    non_match.set_threshold_lists(gblv)
+    non_match.set_threshold_lists(gblv, to_console=True)
     # Order those lists by date, newest first
     non_match.file_over_threshold = date_ordered_file_list(non_match.file_over_threshold)
     non_match.file_under_threshold = date_ordered_file_list(non_match.file_under_threshold)
 
     # Figure out if any orders haven't been matched to previous orders
     if int(get_order_by_date.count_unmatched_orders_order_detail(gblv)[0][0]) > 0:
-        print_log("Searching previously unmatched Marcom orders")
-        # TODO make table of all order data, run through to delete orders
+        gblv.print_log("Searching previously unmatched Marcom orders")
+
+        # Create table of orders to process
+        get_order_by_date.no_match_files_table(gblv, non_match.file_under_threshold)
+
+        for order in non_match.file_under_threshold:
+            process_48_hour_dat(order)
     else:
-        print_log("No unmatched Marcom orders to search")
+        gblv.print_log("No unmatched Marcom orders to search")
 
-
-    print_log("Processing files to unlock routes")
+    gblv.print_log("Processing files to unlock routes")
     get_order_by_date.delete_orders_table(gblv)
     for order in non_match.file_over_threshold:
+        gblv.print_log("\tUnlocking routes for {}".format(order))
         # All all records from old orders into delete_order_records table
         with open(os.path.join(gblv.no_match_orders_path, order), 'r') as o:
-            csvr = csv.DictReader(o, ['AgentID','DateSelected','City','State',
-                                      'ZipCode','RouteID','Quantity','POS',
+            csvr = csv.DictReader(o, ['AgentID', 'DateSelected', 'City', 'State',
+                                      'ZipCode', 'RouteID', 'Quantity', 'POS',
                                       'NumberOfTouches'], delimiter='\t')
             next(csvr)
             for line in csvr:
@@ -446,9 +551,10 @@ def process_non_match(hours):
     # iterate through sessions ids and unlock routes
     get_order_by_date.delete_order_record_unlock_routes(gblv, session_id)
 
-    print_log("Moving orders older than {} hours to deleted directory".format(hours))
+    # Any orders that are over [hours], move to deleted directory
+    gblv.print_log("Moving orders older than {} hours to deleted directory".format(hours))
     for order in non_match.file_over_threshold:
-        print_log("\tMoving {} to deleted_orders".format(order))
+        gblv.print_log("\tMoving {} to deleted_orders".format(order))
         move_file_to_new_folder(gblv.no_match_orders_path,
                                 gblv.deleted_orders_path, order,
                                 delete_original=False)
@@ -541,8 +647,23 @@ def write_message_log():
                                                             "",
                                                             line[7]))
 
+        log.write("\n\nUnmatched Marcom orders:\n\n")
+        log.write("{:<23}{:<10}{:<12}{:<18}{:<12}{:>8}\n".format("Order Date",
+                                                                 "User ID",
+                                                                 "Order ID",
+                                                                 "Order Detail ID",
+                                                                 "Order Number",
+                                                                 "Qty"))
 
-if __name__ == '__main__':
+        for line in get_order_by_date.marcom_orders_unmatched(gblv):
+            log.write("{:<23}{:<10}{:<12}{:<18}{:<12}{:>8,}\n".format(line[0],
+                                                                      line[1],
+                                                                      line[2],
+                                                                      line[3],
+                                                                      line[4],
+                                                                      line[5]))
+
+def run_processing():
     global gblv
     gblv = settings.GlobalVar()
     # Set environment to 'PRODUCTION' for production
@@ -555,12 +676,9 @@ if __name__ == '__main__':
 
     # get_order_by_date.initialize_databases(gblv)
 
-    # get_order_by_date.import_userdata(gblv)
-    # get_order_by_date.clear_processing_files_table(gblv)
-    # download_web_orders(2)
-
-    process_non_match(48)
-    exit()
+    get_order_by_date.import_userdata(gblv)
+    get_order_by_date.clear_processing_files_table(gblv)
+    download_web_orders(2)
 
     # get_order_by_date.clear_file_history_table(gblv)
 
@@ -572,14 +690,94 @@ if __name__ == '__main__':
     for order in orders:
         process_dat(order)
 
-    if len(orders):
-        get_order_by_date.append_filename_to_orderdetail(gblv)
-        get_order_by_date.processing_table_to_history(gblv)
-        write_message_log()
-        job_agent_status(5)
-    else:
+    if not len(orders):
         print("No new files to process")
 
-    # TODO add code here for running through hold path/no match orders for orders
+    process_non_match(48)
+
+    get_order_by_date.append_filename_to_orderdetail(gblv)
+    get_order_by_date.processing_table_to_history(gblv)
+
+    write_message_log()
+    job_agent_status(5)
+
     # TODO need script to handle EXEC EDDM_SwapNumberOfDrops.  Import dat records and run update script.
-    # TODO include a line in the report for Marcom orders not matched to downloaded .dat files
+
+
+def force_processing(file_name, order_detail_order_id):
+    """
+    Forces processing of file [file_name], matches to [order_detail_order_id] == OrderDetail.order_detail_id
+    Use Caution!!!
+    :param file_name: name of file, must exist in processing path
+    :param order_detail_order_id: order detail id in OrderDetail.order_order_detail_id
+    :return:
+    """
+    global gblv
+    gblv = settings.GlobalVar()
+    # Set environment to 'PRODUCTION' for production
+    gblv.set_environment('QA')
+    # gblv.set_environment('PRODUCTION')
+    gblv.set_order_paths()
+    gblv.create_accuzip_dir()
+    gblv.set_token_name()
+    gblv.set_db_name()
+
+    eddm_order = settings.EDDMOrder()
+    eddm_order.set_mailing_residential(True)
+    eddm_order.set_touch_1_maildate(file_name[-18:-4])
+    eddm_order.set_touch_2_maildate(file_name[-18:-4])
+
+    # get number of touches in the file
+    with open(os.path.join(gblv.downloaded_orders_path, file_name), 'r') as routes:
+        csvr = csv.DictReader(routes, eddm_order.dat_header, delimiter='\t')
+        next(csvr)
+        running_cnt = 0
+        for rec in csvr:
+            eddm_order.file_touches = int(rec['NumberOfTouches'])
+            running_cnt += int(rec['Quantity'])
+
+        eddm_order.file_qty = running_cnt
+
+    get_order_by_date.update_processing_file_table(file_name, eddm_order, gblv)
+    match_search = get_order_by_date.file_to_order_force_match(file_name, order_detail_order_id, gblv)
+
+    gblv.print_log("Force Match: {}".format(file_name))
+
+    # Update touches to touch count in downloaded order data
+    eddm_order.order_touches = match_search[1][9]
+    eddm_order.order_qty = match_search[1][11]
+    eddm_order.jobname = match_search[1][2]
+
+    # Log any non-matches
+    if match_search[1][7] != match_search[1][9]:
+        eddm_order.processing_messages['touch_match'] = False
+
+    if match_search[1][6] != match_search[1][11]:
+        eddm_order.processing_messages['count_match'] = False
+
+    # process_path = os.path.join(gblv.downloaded_orders_path, match_search[1][2])
+    process_path = os.path.join(gblv.save_orders_path, match_search[1][2])
+
+    create_directory_path(process_path)
+    # Copy original file into new directory, in 'original' folder
+    move_file_to_new_folder(gblv.downloaded_orders_path,
+                            os.path.join(process_path, 'original'),
+                            file_name)
+
+    # Write accuzip dbf files for this job, and save copy to accuzip folder
+    write_azzuzip_files(eddm_order, process_path, file_name, match_search[1])
+    # update processing files table, set processing date
+    get_order_by_date.extended_update_processing_file_table(gblv, file_name, eddm_order)
+    get_order_by_date.status_update_processing_file_table(gblv, file_name, "Hard match, order processed")
+    # Copy file to complete_processing_files path
+    move_file_to_new_folder(gblv.downloaded_orders_path,
+                            gblv.complete_processing_path, file_name, delete_original=gblv.delete_original_files)
+
+    get_order_by_date.append_filename_to_orderdetail(gblv)
+    get_order_by_date.processing_table_to_history(gblv)
+    write_message_log()
+
+
+if __name__ == '__main__':
+    run_processing()
+    # force_processing('40960_20190724150550.dat', '35852465')

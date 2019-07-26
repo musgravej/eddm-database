@@ -46,4 +46,4 @@ def dates():
 
 
 if __name__ == '__main__':
-    pass
+    print("")
