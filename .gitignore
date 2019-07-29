@@ -13,6 +13,7 @@ config.ini
 !notes.txt
 usps_api.py
 /v2fbluserdata
+settings_local_scheduler.py
 
 __pycache__/
 *.py[cod]
