@@ -45,12 +45,12 @@ class GlobalVar:
         self.token = ''
         self.db_name = ''
 
-        self.token_names = {self.fb_token: 'Farm Bureau',
-                            self.fb_qa_token: 'Farm Bureau QA',
+        self.token_names = {'PRODUCTION': 'Farm Bureau',
+                            'QA': 'Farm Bureau QA',
                             }
 
-        self.db_names = {self.fb_token: 'eddm_db.db',
-                         self.fb_qa_token: 'eddm_db_qa.db'
+        self.db_names = {'PRODUCTION': 'eddm_db.db',
+                         'QA': 'eddm_db_qa.db'
                          }
 
         # Work environment
@@ -106,16 +106,16 @@ class GlobalVar:
 
     def set_environment(self, env):
         # set to 'Production' for production, anything else, not production
-        self.environment = env
+        self.environment = env.upper()
 
     def set_token_name(self):
-        if self.environment.upper() == 'PRODUCTION':
+        if self.environment == 'PRODUCTION':
             self.token = self.fb_token
         else:
             self.token = self.fb_qa_token
 
     def set_db_name(self):
-        self.db_name = self.db_names[self.token]
+        self.db_name = self.db_names[self.environment]
 
     def print_log(self, message):
         """

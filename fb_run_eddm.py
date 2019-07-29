@@ -10,6 +10,7 @@ import configparser
 import settings
 import get_order_by_date
 import fpdf
+import time
 
 """
 This script will process FB EDDM lists downloaded from eddm order portal
@@ -144,6 +145,7 @@ def process_48_hour_dat(fle):
         # Log any non-matches
         if match_search[1][7] != match_search[1][9]:
             eddm_order.processing_messages['touch_match'] = False
+            update_touches_for_non_match(gblv.no_match_orders_path, fle, eddm_order.jobname)
 
         if match_search[1][6] != match_search[1][11]:
             eddm_order.processing_messages['count_match'] = False
@@ -182,6 +184,7 @@ def process_48_hour_dat(fle):
         # Log any non-matches
         if match_search[1][7] != match_search[1][9]:
             eddm_order.processing_messages['touch_match'] = False
+            update_touches_for_non_match(gblv.no_match_orders_path, fle, eddm_order.jobname)
 
         if match_search[1][6] != match_search[1][11]:
             eddm_order.processing_messages['count_match'] = False
@@ -257,6 +260,7 @@ def process_dat(fle):
         # Log any non-matches
         if match_search[1][7] != match_search[1][9]:
             eddm_order.processing_messages['touch_match'] = False
+            update_touches_for_non_match(gblv.downloaded_orders_path, fle, eddm_order.jobname)
 
         if match_search[1][6] != match_search[1][11]:
             eddm_order.processing_messages['count_match'] = False
@@ -307,6 +311,7 @@ def process_dat(fle):
         # Log any non-matches
         if match_search[1][7] != match_search[1][9]:
             eddm_order.processing_messages['touch_match'] = False
+            update_touches_for_non_match(gblv.downloaded_orders_path, fle, eddm_order.jobname)
 
         if match_search[1][6] != match_search[1][11]:
             eddm_order.processing_messages['count_match'] = False
@@ -463,6 +468,9 @@ def download_web_orders(back_days):
     date_end = datetime.datetime.today()
     date_start = date_end - datetime.timedelta(days=back_days)
 
+    gblv.print_log("Downloading orders from {} to {}".format(datetime.datetime.strftime(date_start, "%m/%d/%Y"),
+                                                             datetime.datetime.strftime(date_end, "%m/%d/%Y")))
+
     get_order_by_date.order_request_by_date(date_start, date_end, gblv, gblv.token)
     get_order_by_date.clean_unused_orders(gblv, gblv.token)
 
@@ -558,6 +566,26 @@ def process_non_match(hours):
         move_file_to_new_folder(gblv.no_match_orders_path,
                                 gblv.deleted_orders_path, order,
                                 delete_original=False)
+
+
+def update_touches_for_non_match(processing_file_path, fle, jobname):
+    """
+    Updates Marcom for orders that don't have matching touches in Marcom and the .dat data
+    """
+    gblv.print_log("Updating touch count for {}: {}".format(fle, jobname))
+    get_order_by_date.update_order_touches_table(gblv)
+
+    with open(os.path.join(processing_path, fle), 'r') as o:
+        csvr = csv.DictReader(o, ['AgentID', 'DateSelected', 'City', 'State',
+                                  'ZipCode', 'RouteID', 'Quantity', 'POS',
+                                  'NumberOfTouches'], delimiter='\t')
+        next(csvr)
+        for line in csvr:
+            get_order_by_date.insert_into_update_order_touches_table(gblv, order, line)
+
+    # get session id to update touches
+    session_id = get_order_by_date.update_touch_record_session_ids(gblv)
+    get_order_by_date.order_submit_update_route_touches(gblv, session_id)
 
 
 def date_ordered_file_list(eval_list):
@@ -663,6 +691,15 @@ def write_message_log():
                                                                       line[4],
                                                                       line[5]))
 
+
+def set_up_functions():
+    pass
+    # For setup, don't run in production
+    # get_order_by_date.initialize_databases(gblv)
+    # get_order_by_date.clear_file_history_table(gblv)
+    #
+
+
 def run_processing():
     global gblv
     gblv = settings.GlobalVar()
@@ -674,24 +711,28 @@ def run_processing():
     gblv.set_token_name()
     gblv.set_db_name()
 
-    # get_order_by_date.initialize_databases(gblv)
+    # FOR SETUP ONLY set_up_functions()
 
-    get_order_by_date.import_userdata(gblv)
+    # gblv.print_log("Importing V2FBLUSERDATA")
+    # get_order_by_date.import_userdata(gblv)
+    # gblv.print_log("Import complete")
+    gblv.print_log("Vacuuming database")
+    get_order_by_date.vacuum_database(gblv)
     get_order_by_date.clear_processing_files_table(gblv)
-    download_web_orders(2)
 
-    # get_order_by_date.clear_file_history_table(gblv)
+    # download_web_orders(2)
 
     # Create a list of orders
     downloaded_orders = [f for f in os.listdir(gblv.downloaded_orders_path) if f[-3:].upper() == 'DAT']
     orders = date_ordered_file_list(downloaded_orders)
     # Create table of orders to process
     get_order_by_date.processing_files_table(gblv, orders)
+
     for order in orders:
         process_dat(order)
 
     if not len(orders):
-        print("No new files to process")
+        gblv.print_log("No new files to process")
 
     process_non_match(48)
 
@@ -701,22 +742,20 @@ def run_processing():
     write_message_log()
     job_agent_status(5)
 
-    # TODO need script to handle EXEC EDDM_SwapNumberOfDrops.  Import dat records and run update script.
-
 
 def force_processing(file_name, order_detail_order_id):
     """
     Forces processing of file [file_name], matches to [order_detail_order_id] == OrderDetail.order_detail_id
     Use Caution!!!
-    :param file_name: name of file, must exist in processing path
+    :param file_name: name of file, must exist in downloaded orders path
     :param order_detail_order_id: order detail id in OrderDetail.order_order_detail_id
     :return:
     """
     global gblv
     gblv = settings.GlobalVar()
     # Set environment to 'PRODUCTION' for production
-    gblv.set_environment('QA')
-    # gblv.set_environment('PRODUCTION')
+    # gblv.set_environment('QA')
+    gblv.set_environment('PRODUCTION')
     gblv.set_order_paths()
     gblv.create_accuzip_dir()
     gblv.set_token_name()
@@ -778,6 +817,55 @@ def force_processing(file_name, order_detail_order_id):
     write_message_log()
 
 
+def cancel_order(jobname):
+    """
+    Manually opens routes for jobname.  File must still exist in gblv.complete_processing_path
+    Updates file processing history status to DELETED [Date]
+    """
+    global gblv
+    gblv = settings.GlobalVar()
+    # Set environment to 'PRODUCTION' for production
+    # gblv.set_environment('QA')
+    gblv.set_environment('PRODUCTION')
+    gblv.set_order_paths()
+    gblv.create_accuzip_dir()
+    gblv.set_token_name()
+    gblv.set_db_name()
+
+    qry_resl = get_order_by_date.qry_processing_files_history(gblv, jobname)
+    if int(qry_resl[0][0]) != 0:
+        filename = qry_resl[0][1]
+        job = qry_resl[0][2]
+        qty = qry_resl[0][3]
+
+        get_order_by_date.delete_orders_table(gblv)
+        gblv.print_log("\tUnlocking routes for {}".format(job))
+        # All all records from old orders into delete_order_records table
+        with open(os.path.join(gblv.complete_processing_path, filename), 'r') as o:
+            csvr = csv.DictReader(o, ['AgentID', 'DateSelected', 'City', 'State',
+                                      'ZipCode', 'RouteID', 'Quantity', 'POS',
+                                      'NumberOfTouches'], delimiter='\t')
+            next(csvr)
+            for line in csvr:
+                get_order_by_date.insert_into_delete_orders_table(gblv, filename, line)
+
+        # create set of session ids to unlock
+        session_id = get_order_by_date.delete_order_record_session_ids(gblv)
+        # iterate through sessions ids and unlock routes
+        get_order_by_date.delete_order_record_unlock_routes(gblv, session_id)
+        # update file history status
+        process_date = datetime.datetime.strftime(datetime.datetime.today(), "%m/%d/%Y")
+        get_order_by_date.status_update_processing_history_table(gblv, filename, "JOB CANCELLED, Routes unlocked"
+                                                                             " {}".format(process_date))
+
+    else:
+        print("No order match found for jobname {}".format(jobname))
+        time.sleep(4)
+
+
 if __name__ == '__main__':
-    run_processing()
+    # cancel_order('FB161309')
     # force_processing('40960_20190724150550.dat', '35852465')
+    run_processing()
+    # TODO clean up code, remove unused functions from get_order_by_date
+    # TODO create virtual enviornment to run job

@@ -16,6 +16,10 @@ Error during get orders as: prepare_for_mysql result = self._cmysql.convert_to_m
 """
 
 
+def conntect_message():
+    print("succesffully connected to get_order_by_date.py")
+
+
 def find_template_value_drops(template_field):
         for elem in template_field:
             # print(elem)
@@ -390,6 +394,77 @@ def clear_processing_files_table(gblv):
     conn.close()
 
 
+def vacuum_database(gblv):
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    sql = "VACUUM;"
+    cursor.execute(sql)
+    conn.commit()
+    conn.close()
+
+
+def update_order_touches_table(gblv):
+    """
+    Creates a table of records that need to be updated in the EDDM database to 
+    match the number of touches to the Marcom number of touches
+    """
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+
+    sql = "DROP TABLE IF EXISTS `update_touch_records`;"
+    cursor.execute(sql)
+
+    sql = ("CREATE TABLE `update_touch_records` ("
+           "`filename` VARCHAR(100) NOT NULL,"
+           "`agent_id` VARCHAR(10) NULL DEFAULT NULL,"
+           "`date_selected` DATETIME NULL DEFAULT NULL,"
+           "`city` VARCHAR(60) DEFAULT NULL,"
+           "`state` VARCHAR(2) DEFAULT NULL,"
+           "`zipcode` VARCHAR(5) DEFAULT NULL,"
+           "`routeid` VARCHAR(5) DEFAULT NULL,"
+           "`quantity` int(8) DEFAULT NULL,"
+           "`pos` int(8) DEFAULT NULL,"
+           "`number_of_touches` int(8) DEFAULT NULL);")
+
+    cursor.execute(sql)
+    conn.commit()
+    conn.close()
+
+
+def insert_into_update_order_touches_table(gblv, filename, rec):
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    sql = ("INSERT INTO `update_touch_records` (`filename`,"
+           "`agent_id`,`date_selected`,`city`,`state`,`zipcode`,"
+           "`routeid`,`quantity`,`pos`,`number_of_touches`) "
+           "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);")
+
+    # 7/16/2019 7:11:10 PM
+    date_selected = datetime.datetime.strptime(rec['DateSelected'], "%m/%d/%Y %I:%M:%S %p")
+
+    cursor.execute(sql, (filename, rec['AgentID'], date_selected, 
+                         rec['City'], rec['State'], rec['ZipCode'], rec['RouteID'], 
+                         rec['Quantity'], rec['POS'], rec['NumberOfTouches']))
+    conn.commit()
+    conn.close()
+
+
+def qry_processing_files_history(gblv, jobname):
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+
+    sql = ("SELECT count(*), filename, jobname, order_records FROM `ProcessingFilesHistory` "
+           "WHERE jobname LIKE '{}%';".format(jobname))
+
+    cursor.execute(sql)
+    results = cursor.fetchall()
+
+    conn.commit()
+    conn.close()
+
+    return results
+
+
 def delete_orders_table(gblv):
     """
     Creates a table of all the records that are being released for processing again,
@@ -526,6 +601,18 @@ def status_update_processing_file_table(gblv, filename, message):
     conn.close()
 
 
+def status_update_processing_history_table(gblv, filename, message):
+
+    sql = ("UPDATE `ProcessingFilesHistory` SET `status` = ? "
+           "where `filename` = ?;")
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql, (message, filename))
+    conn.commit()
+    conn.close()
+
+
 def status_update_processing_no_match_table(gblv, filename, message):
 
     sql = ("UPDATE `NoMatchFiles` SET `status` = ? "
@@ -607,6 +694,52 @@ def delete_order_record_unlock_routes(gblv, session_id_set):
                 cur.execute(sql)
 
         conn.commit()
+
+
+def order_submit_update_route_touches(gblv, session_id):
+
+    with pytds.connect(gblv.mssql_connection, 
+                       gblv.mssql_database, 
+                       gblv.mssql_user, 
+                       gblv.mssql_pass) as conn:
+
+        with conn.cursor() as cur:
+            sql = "EXEC guideone.EDDM_SwapNumberOfDrops '{}';".format(session_id)
+            # print(sql)
+            cur.execute(sql)
+        conn.commit()
+
+
+def update_touch_record_session_ids(gblv):
+    sql = "SELECT agent_id, date_selected FROM update_touch_records;"
+
+    conn = sqlite3.connect(gblv.db_name)
+    cursor = conn.cursor()
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    conn.close()
+
+    session_id_set = set()
+    for agentid, date_selected in results:
+        with pytds.connect(gblv.mssql_connection, 
+                           gblv.mssql_database, 
+                           gblv.mssql_user, 
+                           gblv.mssql_pass) as conn:
+
+            with conn.cursor() as cur:
+                mssql = ("SELECT a.* FROM guideone.UserEDDMRoute a "
+                         "JOIN guideone.EDDMUser b ON "
+                         "a.EDDMUserId = b.EDDMUserId "
+                         "WHERE b.UserName = '{}' AND "
+                         "DATEADD(ms, -DATEPART(ms, a.DateSelected), a.DateSelected) "
+                         "= '{}';".format(agentid, date_selected)) 
+
+                cur.execute(mssql)
+
+                for rec in cur.fetchall():
+                    session_id_set.add(rec[6])
+
+    return session_id_set
 
 
 def delete_order_record_session_ids(gblv):
